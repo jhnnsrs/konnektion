@@ -1,0 +1,178 @@
+"""Writing a collection into a store, in the one order that is safe.
+
+**The manifest lands last.** A prefix has no atomic "upload finished" flag: a ``PutObject`` either
+happened or it did not, but a tree is a sequence of writes that can stop anywhere. So every file
+the manifest refers to is written before the manifest is, and a prefix without a manifest is an
+interrupted write rather than a collection. That ordering is the entire completion protocol, and
+it is why this module exists rather than a loop at the call site -- a caller who writes the
+manifest first has built something that registers cleanly and fails later, on a reader, with no
+way to tell an interrupted write from a corrupt one.
+
+The same tree lands on a local directory and in an S3 prefix; see :mod:`konnektion.stores`.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
+from typing import TYPE_CHECKING, Any
+
+from konnektion.build import NetworkCollection
+from konnektion.errors import FormatError
+from konnektion.frames import (
+    DEFAULT_ROW_GROUP_BYTES,
+    blob_sizes,
+    plan_byte_chunks,
+    table_to_chunked_parquet,
+    table_to_parquet,
+    validate_columns,
+)
+from konnektion.manifest import (
+    CELL_CATALOG_PATH,
+    MANIFEST_NAME,
+    OBJECT_CATALOG_PATH,
+    FileEntry,
+    Manifest,
+    level_part_path,
+)
+from konnektion.stores import KonnektionStore, join, put_bytes
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import pyarrow as pa
+
+#: How large a level's Parquet part is allowed to get before the level is split across parts.
+#: A level is a directory precisely so this can happen without the layout changing shape.
+DEFAULT_MAX_PART_BYTES = 512 * 1024 * 1024
+
+
+def _keys(table: pa.Table) -> list[tuple[int, int]]:
+    """The ``(level, cell)`` key of every row, refusing a row that has none.
+
+    Both columns are non-null in the schema a server checks, and a row without a key is a row no
+    reader could locate, fetch or verify -- so it is named here rather than written out as a cell
+    addressed ``(0, 0)``.
+    """
+    levels = table.column("level").to_pylist()
+    cells = table.column("cell").to_pylist()
+    keys: list[tuple[int, int]] = []
+    for row, (level, cell) in enumerate(zip(levels, cells)):
+        if level is None or cell is None:
+            raise FormatError(
+                f"Row {row} of this frame holds null in `level` or `cell`. Both are non-null in "
+                f"the format's schema, and a row without that key names no cell at all."
+            )
+        keys.append((int(level), int(cell)))
+    return keys
+
+
+def _plan_parts(shard: pa.Table, max_part_bytes: int) -> list[pa.Table]:
+    """Split one level's rows into parts, budgeting on the blob bytes each row carries."""
+    if shard.num_rows == 0:
+        return [shard]
+    sizes = blob_sizes(shard)
+    if sum(sizes) <= max_part_bytes:
+        return [shard]
+    return [shard.slice(start, count) for start, count in plan_byte_chunks(sizes, max_part_bytes)]
+
+
+def _locate(
+    shard: pa.Table, part: int, chunks: Sequence[tuple[int, int]]
+) -> dict[tuple[int, int], tuple[int, int, int]]:
+    """Map each cell in a written part to the part and row group a reader must fetch for it."""
+    keys = _keys(shard)
+    sizes = blob_sizes(shard)
+    found: dict[tuple[int, int], tuple[int, int, int]] = {}
+    for group, (start, count) in enumerate(chunks):
+        for row in range(start, start + count):
+            found[keys[row]] = (part, group, sizes[row])
+    return found
+
+
+def _with_locators(
+    catalog: pa.Table, locators: Mapping[tuple[int, int], tuple[int, int, int]]
+) -> pa.Table:
+    """Fill the cell catalog's ``part`` / ``row_group`` / ``blob_bytes`` from what was written.
+
+    A cell the geometry does not hold keeps its nulls rather than being dropped or defaulted: a
+    catalog row without a locator is a real inconsistency, and :func:`konnektion.verify.verify`
+    should be the thing that says so -- not a silent zero here that points a reader at row group
+    0 of part 0 and hands it the wrong cell.
+    """
+    import pyarrow as pa
+
+    resolved = [locators.get(key) for key in _keys(catalog)]
+    columns = {
+        "part": pa.array([None if item is None else item[0] for item in resolved], type=pa.int32()),
+        "row_group": pa.array(
+            [None if item is None else item[1] for item in resolved], type=pa.int32()
+        ),
+        "blob_bytes": pa.array(
+            [None if item is None else item[2] for item in resolved], type=pa.int64()
+        ),
+    }
+    filled = catalog
+    for name, values in columns.items():
+        filled = filled.set_column(
+            filled.schema.get_field_index(name), catalog.schema.field(name), values
+        )
+    return filled
+
+
+def write_collection(
+    collection: NetworkCollection,
+    store: KonnektionStore,
+    prefix: str = "",
+    *,
+    max_part_bytes: int = DEFAULT_MAX_PART_BYTES,
+    row_group_bytes: int = DEFAULT_ROW_GROUP_BYTES,
+) -> Manifest:
+    """Write a built collection into ``store`` under ``prefix``, manifest last.
+
+    Returns the manifest as written -- which is not the one the collection was built with:
+    ``files`` is rewritten to name the parts that actually landed *and how long each one is*, so
+    a reader that can neither list nor stat a prefix (an HTTP store, say) can still find every
+    level and range-read inside it.
+
+    **The geometry goes first, then the catalog that points into it, then the manifest.** The
+    cell catalog cannot be written before the geometry: it carries the part and row group holding
+    each cell, and those are facts about bytes that do not exist until they have been serialized.
+    That ordering is also strictly safer than the reverse -- an interrupted write can leave a
+    catalog pointing at nothing only if it also leaves no manifest, which is already the signal
+    for an unfinished collection.
+    """
+    validate_columns(collection.cell_catalog, "cell_catalog")
+    validate_columns(collection.object_catalog, "object_catalog")
+    for _, shard in collection.shards:
+        validate_columns(shard, "geometry")
+
+    levels: dict[str, list[dict[str, Any]]] = {}
+    locators: dict[tuple[int, int], tuple[int, int, int]] = {}
+
+    for level, shard in sorted(collection.shards, key=lambda item: item[0]):
+        entries: list[FileEntry] = []
+        for number, part in enumerate(_plan_parts(shard, max_part_bytes)):
+            body, chunks = table_to_chunked_parquet(part, row_group_bytes=row_group_bytes)
+            path = level_part_path(level, number)
+            put_bytes(store, join(prefix, path), body)
+            entries.append(FileEntry(path=path, size=len(body), row_groups=len(chunks)))
+            locators.update(_locate(part, number, chunks))
+        levels[str(level)] = [entry.to_dict() for entry in entries]
+
+    catalog = table_to_parquet(_with_locators(collection.cell_catalog, locators))
+    put_bytes(store, join(prefix, CELL_CATALOG_PATH), catalog)
+    objects = table_to_parquet(collection.object_catalog)
+    put_bytes(store, join(prefix, OBJECT_CATALOG_PATH), objects)
+
+    written: dict[str, Any] = {
+        "cells": FileEntry(path=CELL_CATALOG_PATH, size=len(catalog)).to_dict(),
+        "objects": FileEntry(path=OBJECT_CATALOG_PATH, size=len(objects)).to_dict(),
+        "levels": levels,
+    }
+
+    # Everything the manifest names now exists. Only now is the collection a collection.
+    manifest = replace(collection.manifest(), files=written)
+    put_bytes(store, join(prefix, MANIFEST_NAME), manifest.to_json())
+    return manifest
+
+
+__all__ = ["DEFAULT_MAX_PART_BYTES", "write_collection"]

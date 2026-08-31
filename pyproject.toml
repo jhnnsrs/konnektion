@@ -1,0 +1,135 @@
+[project]
+name = "konnektion"
+version = "0.1.0"
+description = "a level-of-detail graph wire format: octree-partitioned node/edge networks written to any object store"
+authors = [{ name = "jhnnsrs", email = "jhnnsrs@gmail.com" }]
+requires-python = ">=3.11"
+readme = "README.md"
+license = "MIT"
+# konnektion builds network collections, so everything that takes part in building one is a
+# dependency rather than an extra. Unlike `fabriks`, that list is short: a graph is cut at a
+# cell plane by assigning nodes and copying foreign endpoints, which is index arithmetic, and
+# its coarse levels are made by Strahler pruning and Douglas-Peucker -- both pure numpy. So
+# there is no `trimesh`, no `shapely`, no `fast-simplification` and no `scipy` here, and that
+# absence is a fact about the format rather than an oversight: nothing konnektion does needs
+# to intersect geometry.
+dependencies = [
+    "numpy>=1.26",
+    "pyarrow>=12",
+]
+
+[project.optional-dependencies]
+# Writing to S3 (or anywhere else obstore reaches). konnektion only needs three methods off a
+# store, so this is for callers who want one rather than a directory.
+obstore = ["obstore>=0.10"]
+complete = ["obstore>=0.10"]
+# Installed inside the semantic-release Docker action so build_command has uv.
+build = ["uv>=0.7.12"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-cov>=6.1.1",
+    "python-semantic-release>=9.21.0",
+    "ruff>0.11",
+    "basedpyright>=1.21",
+    "obstore>=0.10",
+    # pyarrow ships no type information of its own, so these stubs are what holds the frames,
+    # the reader and the writer to the full strict rule set rather than to `Unknown`.
+    "pyarrow-stubs>=20.0.0.20260625",
+]
+
+[tool.hatch.build.targets.sdist]
+include = ["konnektion"]
+
+[tool.hatch.build.targets.wheel]
+include = ["konnektion"]
+
+[tool.basedpyright]
+include = ["konnektion"]
+exclude = ["**/__pycache__", "tests"]
+typeCheckingMode = "strict"
+# These four are off for reasons specific to this package -- konnektion depends only on numpy
+# and pyarrow, both of which ship types, so the usual excuse (an untyped dependency) does not
+# apply. Three things do:
+#
+#   * numpy's `.tolist()` and `.item()` are annotated `Any` by construction, because their
+#     return type depends on the array's rank and dtype. Every graph walk here goes through
+#     `edges.tolist()`, so the loop variables are Unknown no matter what konnektion annotates.
+#   * the ingest surface is deliberately `Any`: `coerce_network` accepts a `Network`, anything
+#     structurally carrying `nodes`/`edges`, a mapping, or a bare pair. Narrowing that to a
+#     union would make the parameter type a lie about what is accepted.
+#   * reading a manifest is reading dynamic JSON, where every `.get()` is legitimately unknown
+#     until it has been validated -- which is exactly what those functions do.
+#
+# Every other strict rule stays on, which is what catches the mistakes that matter here:
+# missing returns, unreachable branches, and arguments that are the wrong type rather than an
+# unknown one.
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportUnknownLambdaType = false
+reportMissingTypeStubs = false
+
+[tool.ruff.lint]
+extend-select = ["ANN", "D1"]
+
+[tool.ruff.lint.per-file-ignores]
+# A test's name and docstring say what it asserts; a `-> None` on every one of them is noise
+# that makes the suite harder to read, which is the opposite of what the rule is for.
+"tests/*" = ["ANN001", "ANN201", "ANN202", "ANN206"]
+
+[tool.ruff]
+line-length = 100
+exclude = [".git", ".mypy_cache", ".ruff_cache", ".venv", "__pypackages__", "build", "dist", "venv"]
+
+[tool.pytest.ini_options]
+markers = [
+    "obstore: marks tests that require the obstore extra",
+]
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+# The semantic-release GitHub Action runs in a Docker container without uv, so
+# install it first (the `build` extra). After PSR bumps the version in
+# pyproject.toml, re-sync just this package's entry in uv.lock and stage it so
+# the release commit carries a consistent lock. $PACKAGE_NAME is injected by PSR.
+build_command = """
+    python -m pip install -e '.[build]'
+    uv lock --upgrade-package "$PACKAGE_NAME"
+    git add uv.lock
+    uv build
+"""
+commit_message = "chore(release): v{version} [skip ci]"
+
+# main -> stable X.Y.Z. next -> prereleases X.Y.Z-rc.N. N.x -> maintenance.
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.branches.next]
+match = "next"
+prerelease = true
+prerelease_token = "rc"
+
+# Maintenance branches (1.x, 2.x, ...) cut stable patch/minor releases for an
+# older major after a new major has shipped from main.
+[tool.semantic_release.branches.maintenance]
+match = '^\d+\.x$'
+prerelease = false
+
+# Keep the changelog focused on user-facing changes. These patterns only filter
+# what's rendered -- they do not affect version bumps.
+[tool.semantic_release.changelog]
+exclude_commit_patterns = [
+    '^chore(?:\([^)]*\))?: ',
+    '^ci(?:\([^)]*\))?: ',
+    '^build(?:\([^)]*\))?: ',
+    '^style(?:\([^)]*\))?: ',
+    '^test(?:\([^)]*\))?: ',
+    '^Merge ',
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
