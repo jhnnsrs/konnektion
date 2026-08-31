@@ -78,7 +78,7 @@ from konnektion.reader import Collection, DecodedCell, open_collection
 from konnektion.sources import Network, coerce_network
 from konnektion.stores import DirectoryStore, KonnektionStore, MemoryStore
 from konnektion.verify import TIERS, Check, VerifyReport, verify
-from konnektion.writer import write_collection
+from konnektion.writer import awrite_collection, write_collection
 
 __all__ = [
     "MANIFEST_NAME",
@@ -126,5 +126,6 @@ __all__ = [
     "unbranched_runs",
     "validate_columns",
     "verify",
+    "awrite_collection",
     "write_collection",
 ]

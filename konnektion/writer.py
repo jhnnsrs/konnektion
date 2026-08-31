@@ -13,6 +13,7 @@ The same tree lands on a local directory and in an S3 prefix; see :mod:`konnekti
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
@@ -175,4 +176,30 @@ def write_collection(
     return manifest
 
 
-__all__ = ["DEFAULT_MAX_PART_BYTES", "write_collection"]
+async def awrite_collection(
+    collection: NetworkCollection,
+    store: KonnektionStore,
+    prefix: str = "",
+    *,
+    max_part_bytes: int = DEFAULT_MAX_PART_BYTES,
+    row_group_bytes: int = DEFAULT_ROW_GROUP_BYTES,
+) -> Manifest:
+    """Write a collection without blocking the event loop.
+
+    The whole write runs in one worker thread rather than being decomposed into awaited puts,
+    and that is deliberate: Parquet serialization is CPU-bound and releases the GIL, so a thread
+    genuinely overlaps it -- and doing it in one keeps **manifest-last** trivially true rather
+    than making it a scheduling question. An async decomposition would have to re-establish that
+    ordering by hand, and the ordering is the entire completion protocol.
+    """
+    return await asyncio.to_thread(
+        write_collection,
+        collection,
+        store,
+        prefix,
+        max_part_bytes=max_part_bytes,
+        row_group_bytes=row_group_bytes,
+    )
+
+
+__all__ = ["DEFAULT_MAX_PART_BYTES", "awrite_collection", "write_collection"]
