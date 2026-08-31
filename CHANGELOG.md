@@ -2,6 +2,10 @@
 
 <!-- version list -->
 
+## v1.0.0 (2026-08-31)
+
+- Initial Release
+
 ## v0.1.0 (unreleased)
 
 - Initial implementation: the manifest and its vocabulary, the wire format, the octree, Strahler
