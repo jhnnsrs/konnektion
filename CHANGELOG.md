@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.1 (2026-08-31)
+
+### Bug Fixes
+
+- With asyncio writter
+  ([`8df9cfd`](https://github.com/jhnnsrs/konnektion/commit/8df9cfd327f2afdd231badb34aaae1127973ffc7))
+
+
 ## v1.0.0 (2026-08-31)
 
 - Initial Release
