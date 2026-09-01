@@ -21,6 +21,7 @@ import numpy as np
 import numpy.typing as npt
 
 from konnektion.errors import FormatError
+from konnektion.manifest import ATTRIBUTE_NAME_PATTERN
 
 
 @runtime_checkable
@@ -56,6 +57,12 @@ class Network:
     arbor, the inlet of a vessel tree. ``None`` says this object has no distinguished root --
     a connectome component rather than a rooted tree -- and connectivity is then checked per
     connected component instead, which is weaker only in that it cannot say which way is *up*.
+
+    ``attributes`` are extra per-node floats the caller measured -- a tortuosity, a distance to
+    a landmark -- carried through coarsening by the same subset rule as ``radii`` and declared
+    in the manifest so a reader knows to look. ``NaN`` is the value for "this node has no
+    answer"; the builder adds its own computed columns (Strahler order, degree, depth,
+    component) beside them.
     """
 
     nodes: npt.NDArray[np.float64]
@@ -63,6 +70,7 @@ class Network:
     radii: npt.NDArray[np.float64] | None = None
     node_ids: npt.NDArray[np.int64] | None = None
     root: int | None = None
+    attributes: dict[str, npt.NDArray[np.float64]] | None = None
 
     @property
     def node_count(self) -> int:
@@ -104,20 +112,23 @@ def coerce_network(source: NetworkSource) -> Network:
     radii = None
     node_ids = None
     root = None
+    attributes = None
 
     if isinstance(source, Network):
-        nodes, edges, radii, node_ids, root = (
+        nodes, edges, radii, node_ids, root, attributes = (
             source.nodes,
             source.edges,
             source.radii,
             source.node_ids,
             source.root,
+            source.attributes,
         )
     elif isinstance(source, HasNodesAndEdges):
         nodes, edges = source.nodes, source.edges
         radii = getattr(source, "radii", None)
         node_ids = getattr(source, "node_ids", None)
         root = getattr(source, "root", None)
+        attributes = getattr(source, "attributes", None)
     elif isinstance(source, Mapping):
         try:
             nodes, edges = source["nodes"], source["edges"]
@@ -129,6 +140,7 @@ def coerce_network(source: NetworkSource) -> Network:
         radii = source.get("radii")
         node_ids = source.get("node_ids")
         root = source.get("root")
+        attributes = source.get("attributes")
     else:
         try:
             nodes, edges = source
@@ -208,9 +220,67 @@ def coerce_network(source: NetworkSource) -> Network:
                 f"{len(node_array)} nodes."
             )
 
+    attribute_arrays = None
+    if attributes is not None:
+        attribute_arrays = _coerce_attributes(attributes, len(node_array))
+
     return Network(
-        nodes=node_array, edges=edge_array, radii=radius_array, node_ids=id_array, root=root
+        nodes=node_array,
+        edges=edge_array,
+        radii=radius_array,
+        node_ids=id_array,
+        root=root,
+        attributes=attribute_arrays,
     )
+
+
+def _coerce_attributes(
+    attributes: Any, node_count: int  # noqa: ANN401
+) -> dict[str, npt.NDArray[np.float64]]:
+    """Validate caller-supplied per-node attributes, naming the one that is wrong.
+
+    ``NaN`` is legal -- it is the format's "this node has no answer" -- but ``inf`` is not: an
+    infinity survives the float32 round trip, and downstream it silently swallows every window
+    and range a value is compared against.
+    """
+    if not isinstance(attributes, Mapping):
+        raise FormatError(
+            f"`attributes` is a mapping of name to one value per node, got "
+            f"{type(attributes).__name__}."
+        )
+    coerced: dict[str, npt.NDArray[np.float64]] = {}
+    for raw_name, raw_values in attributes.items():
+        name = str(raw_name)
+        if not ATTRIBUTE_NAME_PATTERN.match(name):
+            raise FormatError(
+                f"Attribute {name!r}: a name is lowercase letters, digits and underscores, "
+                f"starting with a letter or underscore, at most 64 characters -- it becomes a "
+                f"Parquet column and a picker value."
+            )
+        if name == "radius":
+            raise FormatError(
+                "Attribute 'radius': a per-node radius travels in the format's own radii "
+                "encoding, so pass it as `radii`, not as an attribute of that name."
+            )
+        try:
+            values = np.asarray(raw_values, dtype=np.float64).reshape(-1)
+        except (TypeError, ValueError) as error:
+            raise FormatError(
+                f"Attribute {name!r} does not coerce to floats: {error}"
+            ) from error
+        if len(values) != node_count:
+            raise FormatError(
+                f"Attribute {name!r} is one value per node, got {len(values)} for "
+                f"{node_count} nodes."
+            )
+        if values.size and np.isinf(values).any():
+            raise FormatError(
+                f"Attribute {name!r} holds an infinity. `NaN` says a node has no value; an "
+                f"infinity is unanswerable to every window a value is compared against, so it "
+                f"is refused."
+            )
+        coerced[name] = values
+    return coerced
 
 
 def coerce_objects(objects: Mapping[int, NetworkSource]) -> dict[int, Network]:

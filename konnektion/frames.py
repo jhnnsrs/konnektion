@@ -56,8 +56,24 @@ REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 
-def arrow_schemas() -> dict[str, pa.Schema]:
-    """The three Arrow schemas, spelled so a DuckDB ``DESCRIBE`` prints what a server accepts."""
+def attribute_column(name: str) -> str:
+    """The geometry column holding one attribute's owned-node values."""
+    return f"attr_{name}"
+
+
+def ghost_attribute_column(name: str) -> str:
+    """The geometry column holding one attribute's ghost values, in ghost order."""
+    return f"ghost_attr_{name}"
+
+
+def arrow_schemas(attribute_names: Sequence[str] = ()) -> dict[str, pa.Schema]:
+    """The three Arrow schemas, spelled so a DuckDB ``DESCRIBE`` prints what a server accepts.
+
+    ``attribute_names`` extends the geometry schema with one ``attr_<name>`` /
+    ``ghost_attr_<name>`` blob pair per declared attribute -- columns the manifest names, so
+    they are per collection rather than fixed, and absent from :data:`REQUIRED_COLUMNS` for the
+    same reason ``radii`` is: the manifest says whether to look.
+    """
     bbox = [
         pa.field(f"bbox_{corner}_{axis}", pa.float64())
         for corner in ("min", "max")
@@ -128,6 +144,16 @@ def arrow_schemas() -> dict[str, pa.Schema]:
             # within an object and need not be across a collection.
             pa.field("object_ghost_offsets", pa.list_(pa.int32())),
             pa.field("object_edge_offsets", pa.list_(pa.int32())),
+            # One blob pair per attribute the manifest declares: owned values in node order,
+            # ghost values in ghost order, exactly the radii layout.
+            *(
+                field
+                for name in attribute_names
+                for field in (
+                    pa.field(attribute_column(name), pa.large_binary(), nullable=True),
+                    pa.field(ghost_attribute_column(name), pa.large_binary(), nullable=True),
+                )
+            ),
         ]),
     }
 
@@ -219,6 +245,9 @@ def blob_sizes(table: pa.Table) -> list[int]:
     names = set(table.column_names)
     columns = ["positions", "node_ids", "edges", "ghost_positions", "ghost_cells", "ghost_ids"]
     columns += [name for name in ("radii", "ghost_radii") if name in names]
+    columns += sorted(
+        name for name in names if name.startswith(("attr_", "ghost_attr_"))
+    )
     parts = [table.column(name).to_pylist() for name in columns]
     return [sum(len(blob or b"") for blob in row) for row in zip(*parts)]
 
@@ -277,8 +306,10 @@ __all__ = [
     "REQUIRED_COLUMNS",
     "ParquetCompression",
     "arrow_schemas",
+    "attribute_column",
     "blob_sizes",
     "build_table",
+    "ghost_attribute_column",
     "parquet_to_table",
     "plan_byte_chunks",
     "table_to_chunked_parquet",

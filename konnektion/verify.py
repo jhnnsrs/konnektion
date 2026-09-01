@@ -28,6 +28,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from konnektion.errors import FormatError
+from konnektion.frames import attribute_column, ghost_attribute_column
 from konnektion.manifest import (
     CELL_CATALOG_PATH,
     OBJECT_CATALOG_PATH,
@@ -112,7 +114,9 @@ def verify(collection: Collection, *, tier: str = "blobs") -> VerifyReport:
 
     checks.extend(_structure(collection))
     if "blobs" in wanted:
-        checks.extend(_blobs(collection))
+        found, notes = _blobs(collection)
+        checks.extend(found)
+        skipped.extend(notes)
     else:
         skipped.append("the `blobs` tier, which is what decodes the geometry")
     if "topology" in wanted:
@@ -232,74 +236,163 @@ def _child_masks_point_at_real_children(collection: Collection) -> Check:
 # --------------------------------------------------------------------------- #
 
 
-def _blobs(collection: Collection) -> Iterator[Check]:
+def _blobs(collection: Collection) -> tuple[list[Check], list[str]]:
     """Every blob decodes, and agrees with the counts on its row."""
+    checks: list[Check] = []
+    notes: list[str] = []
+    declared = collection.manifest.attributes
+
+    checks.append(_attribute_columns_match_the_manifest(collection))
+
     decoded: list[str] = []
     mismatched: list[str] = []
     ranged: list[str] = []
     boxed: list[str] = []
+    short_attributes: list[str] = []
+    refused: list[str] = []
     count = 0
 
-    for level in collection.levels():
-        for cell in collection.iter_cells(level):
-            count += 1
-            where = f"level {cell.level} cell {cell.cell}"
-            entry = collection.cells.get((cell.level, cell.cell))
-            if entry is None:
-                decoded.append(f"{where} is in the geometry but has no catalog row")
-                continue
-            if len(cell.positions) != entry.node_count + entry.ghost_count:
-                mismatched.append(
-                    f"{where} decoded {len(cell.positions)} positions, catalog says "
-                    f"{entry.node_count} + {entry.ghost_count} ghosts"
-                )
-            if len(cell.edges) != entry.edge_count:
-                mismatched.append(
-                    f"{where} decoded {len(cell.edges)} edges, catalog says {entry.edge_count}"
-                )
-            if cell.edges.size and (
-                cell.edges.max() >= len(cell.positions) or cell.edges.min() < 0
-            ):
-                ranged.append(
-                    f"{where} has an edge naming node {int(cell.edges.max())} of "
-                    f"{len(cell.positions)}"
-                )
-            # An owned node must be inside the box it was quantized against. A ghost must not
-            # be -- that is what makes it a ghost -- so only the owned half is checked here.
-            origin, extent = cell_box(cell.cell, cell.level, collection.grid.cell_size)
-            owned = cell.positions[: cell.node_count]
-            if len(owned):
-                relative = (owned - origin) / extent
-                if relative.min() < -1e-6 or relative.max() > 1.0 + 1e-6:
-                    boxed.append(f"{where} owns a node outside its own cell box")
+    # A decode error -- a declared attribute with no blob, a corrupt column -- is reported as a
+    # failure rather than raised, so the column check above still reaches the report that
+    # explains it.
+    try:
+        for level in collection.levels():
+            for cell in collection.iter_cells(level):
+                count += 1
+                where = f"level {cell.level} cell {cell.cell}"
+                entry = collection.cells.get((cell.level, cell.cell))
+                if entry is None:
+                    decoded.append(f"{where} is in the geometry but has no catalog row")
+                    continue
+                if len(cell.positions) != entry.node_count + entry.ghost_count:
+                    mismatched.append(
+                        f"{where} decoded {len(cell.positions)} positions, catalog says "
+                        f"{entry.node_count} + {entry.ghost_count} ghosts"
+                    )
+                if len(cell.edges) != entry.edge_count:
+                    mismatched.append(
+                        f"{where} decoded {len(cell.edges)} edges, catalog says {entry.edge_count}"
+                    )
+                if cell.edges.size and (
+                    cell.edges.max() >= len(cell.positions) or cell.edges.min() < 0
+                ):
+                    ranged.append(
+                        f"{where} has an edge naming node {int(cell.edges.max())} of "
+                        f"{len(cell.positions)}"
+                    )
+                for attribute in declared:
+                    values = cell.attributes.get(attribute.name)
+                    if values is None or len(values) != entry.node_count + entry.ghost_count:
+                        short_attributes.append(
+                            f"{where} decoded {0 if values is None else len(values)} values of "
+                            f"{attribute.name!r}, catalog says {entry.node_count} + "
+                            f"{entry.ghost_count} ghosts"
+                        )
+                # An owned node must be inside the box it was quantized against. A ghost must not
+                # be -- that is what makes it a ghost -- so only the owned half is checked here.
+                origin, extent = cell_box(cell.cell, cell.level, collection.grid.cell_size)
+                owned = cell.positions[: cell.node_count]
+                if len(owned):
+                    relative = (owned - origin) / extent
+                    if relative.min() < -1e-6 or relative.max() > 1.0 + 1e-6:
+                        boxed.append(f"{where} owns a node outside its own cell box")
+    except FormatError as error:
+        refused.append(str(error))
 
-    yield Check(
-        name="every geometry row has a catalog row",
-        tier="blobs",
-        ok=not decoded,
-        detail=f"{count} cells decoded",
-        examples=tuple(decoded[:5]),
+    checks.append(
+        Check(
+            name="every cell decodes",
+            tier="blobs",
+            ok=not refused,
+            detail=f"{count} cells decoded",
+            examples=tuple(refused[:5]),
+        )
     )
-    yield Check(
-        name="decoded counts match the catalog",
-        tier="blobs",
-        ok=not mismatched,
-        detail=f"{count} cells compared",
-        examples=tuple(mismatched[:5]),
+    checks.append(
+        Check(
+            name="every geometry row has a catalog row",
+            tier="blobs",
+            ok=not decoded,
+            detail=f"{count} cells decoded",
+            examples=tuple(decoded[:5]),
+        )
     )
-    yield Check(
-        name="every edge indexes a node the cell holds",
-        tier="blobs",
-        ok=not ranged,
-        detail=f"{count} cells compared",
-        examples=tuple(ranged[:5]),
+    checks.append(
+        Check(
+            name="decoded counts match the catalog",
+            tier="blobs",
+            ok=not mismatched,
+            detail=f"{count} cells compared",
+            examples=tuple(mismatched[:5]),
+        )
     )
-    yield Check(
-        name="owned nodes lie inside their own cell box",
+    checks.append(
+        Check(
+            name="every edge indexes a node the cell holds",
+            tier="blobs",
+            ok=not ranged,
+            detail=f"{count} cells compared",
+            examples=tuple(ranged[:5]),
+        )
+    )
+    checks.append(
+        Check(
+            name="owned nodes lie inside their own cell box",
+            tier="blobs",
+            ok=not boxed,
+            detail=f"{count} cells compared",
+            examples=tuple(boxed[:5]),
+        )
+    )
+    if declared:
+        checks.append(
+            Check(
+                name="every declared attribute decodes to one value per node",
+                tier="blobs",
+                ok=not short_attributes,
+                detail=f"{count} cells x {len(declared)} attribute(s) compared",
+                examples=tuple(short_attributes[:5]),
+            )
+        )
+    else:
+        notes.append(
+            "the per-cell attribute checks: this collection declares no attributes"
+        )
+    return checks, notes
+
+
+def _attribute_columns_match_the_manifest(collection: Collection) -> Check:
+    """The geometry's ``attr_*`` columns are exactly the manifest's declarations.
+
+    Both directions matter. A declared attribute with no column is a picker offering values
+    nobody stored; an undeclared ``attr_*`` column is values no reader will ever look for --
+    the manifest names what exists, so either mismatch is a build bug.
+    """
+    declared = {attribute.name for attribute in collection.manifest.attributes}
+    wanted = {attribute_column(name) for name in declared} | {
+        ghost_attribute_column(name) for name in declared
+    }
+    problems: list[str] = []
+    for level in collection.levels():
+        for part, columns in collection.geometry_columns(level).items():
+            present = {
+                column for column in columns if column.startswith(("attr_", "ghost_attr_"))
+            }
+            for extra in sorted(present - wanted):
+                problems.append(
+                    f"level {level} part {part} carries {extra}, which the manifest does not "
+                    f"declare"
+                )
+            for missing in sorted(wanted - present):
+                problems.append(
+                    f"level {level} part {part} lacks {missing}, which the manifest declares"
+                )
+    return Check(
+        name="attribute columns are exactly what the manifest declares",
         tier="blobs",
-        ok=not boxed,
-        detail=f"{count} cells compared",
-        examples=tuple(boxed[:5]),
+        ok=not problems,
+        detail=f"{len(declared)} attribute(s) declared",
+        examples=tuple(problems[:5]),
     )
 
 
@@ -338,6 +431,12 @@ def _topology(collection: Collection) -> tuple[list[Check], list[str]]:
     checks.append(_coarse_levels_are_smaller(collection))
     checks.append(_a_coarse_level_is_a_subset(collection, per_level))
     checks.append(_lod_error_is_a_real_bound(collection, per_level))
+    if collection.manifest.attributes:
+        checks.append(_attribute_values_survive_coarsening(collection, per_level))
+    else:
+        skipped.append(
+            "the attribute-coarsening check: this collection declares no attributes"
+        )
     return checks, skipped
 
 
@@ -610,6 +709,64 @@ def _a_coarse_level_is_a_subset(
         ok=not strayed,
         detail=f"{compared} coarse nodes traced back to the level below",
         examples=tuple(strayed[:5]),
+    )
+
+
+def _attribute_map(
+    cells: Sequence, name: str  # type: ignore[type-arg]
+) -> dict[tuple[int, int], float]:
+    """``(object_id, node_id)`` -> attribute value, from the owned nodes of one level."""
+    found: dict[tuple[int, int], float] = {}
+    for cell in cells:
+        values = cell.attributes.get(name)
+        if values is None:
+            continue
+        for object_id, node_id, index, is_ghost in _members(cell):
+            if not is_ghost:
+                found[(object_id, node_id)] = float(values[index])
+    return found
+
+
+def _attribute_values_survive_coarsening(
+    collection: Collection, per_level: dict[int, list]  # type: ignore[type-arg]
+) -> Check:
+    """A node kept at a coarse level carries the value it had at level 0, per attribute.
+
+    This is the "computed once, only ever subset" rule stated so it can fail: a build that
+    recomputed a degree or a Strahler order on the pruned graph produces values that are
+    plausible, wrong, and invisible to every other check -- the counts agree, the geometry
+    agrees, only the meaning changed. ``NaN`` at both levels is agreement; the values are the
+    same float32 round trip at both, so anything else is compared exactly.
+    """
+    drifted: list[str] = []
+    compared = 0
+    baseline = {
+        attribute.name: _attribute_map(per_level[0], attribute.name)
+        for attribute in collection.manifest.attributes
+    }
+    for level in range(1, collection.grid.levels):
+        for attribute in collection.manifest.attributes:
+            fine = baseline[attribute.name]
+            for key, value in _attribute_map(per_level[level], attribute.name).items():
+                compared += 1
+                original = fine.get(key)
+                if original is None:
+                    # A node invented at a coarse level is _a_coarse_level_is_a_subset's find.
+                    continue
+                if np.isnan(value) and np.isnan(original):
+                    continue
+                if value != original:
+                    drifted.append(
+                        f"node {key[1]} of object {key[0]} has {attribute.name!r} {value:g} at "
+                        f"level {level} but {original:g} at level 0 -- a metric was recomputed "
+                        f"instead of subset"
+                    )
+    return Check(
+        name="a kept node's attribute values are the level-0 values",
+        tier="topology",
+        ok=not drifted,
+        detail=f"{compared} coarse values traced back to level 0",
+        examples=tuple(drifted[:5]),
     )
 
 

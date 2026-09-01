@@ -44,6 +44,7 @@ from konnektion.codecs.protocol import BlobCodec
 from konnektion.codecs.raw import RawCodec
 from konnektion.errors import FormatError, PartitioningError
 from konnektion.manifest import (
+    ATTRIBUTE_FLOAT32,
     CODEC_NONE,
     COMPRESSION_NONE,
     NODE_IDS_UINT32,
@@ -327,6 +328,54 @@ def decode_radii(
 
 
 # --------------------------------------------------------------------------- #
+# attributes
+# --------------------------------------------------------------------------- #
+
+
+def encode_attribute_values(
+    values: npt.ArrayLike,
+    *,
+    declaration: str,
+    codec: str = CODEC_NONE,
+    compression: str = COMPRESSION_NONE,
+) -> bytes:
+    """Pack one attribute's per-node values at the width the manifest declares.
+
+    ``FLOAT32`` and nothing else in version 1: an attribute is a metric whose "no value" is
+    ``NaN``, which the quantized-integer trick radii play has no way to say. Ghost values are
+    packed by the same call -- a float needs no cell box, so there is no owner-cell dance.
+    """
+    if declaration != ATTRIBUTE_FLOAT32:
+        raise FormatError(
+            f"An attribute's `encoding` is {declaration!r}; the format defines "
+            f"{ATTRIBUTE_FLOAT32}."
+        )
+    implementation = codec_for(codec)
+    return implementation.encode_scalars(
+        np.asarray(values, dtype=np.float64).astype("<f4"), compression=compression
+    )
+
+
+def decode_attribute_values(
+    blob: bytes,
+    *,
+    declaration: str,
+    codec: str = CODEC_NONE,
+    compression: str = COMPRESSION_NONE,
+    count: int | None = None,
+) -> npt.NDArray[np.float64]:
+    """Unpack one attribute's values back into floats, ``NaN`` where the graph had no answer."""
+    if declaration != ATTRIBUTE_FLOAT32:
+        raise FormatError(
+            f"An attribute's `encoding` is {declaration!r}; the format defines "
+            f"{ATTRIBUTE_FLOAT32}."
+        )
+    implementation = codec_for(codec)
+    values = implementation.decode_scalars(blob, dtype="<f4", compression=compression, count=count)
+    return np.asarray(values, dtype=np.float64)
+
+
+# --------------------------------------------------------------------------- #
 # ghosts
 # --------------------------------------------------------------------------- #
 
@@ -423,12 +472,14 @@ def decode_ghost_positions(
 __all__ = [
     "QUANT_MAX",
     "codec_for",
+    "decode_attribute_values",
     "decode_edges",
     "decode_ghost_cells",
     "decode_ghost_positions",
     "decode_node_ids",
     "decode_positions",
     "decode_radii",
+    "encode_attribute_values",
     "encode_edges",
     "encode_ghost_cells",
     "encode_ghost_positions",

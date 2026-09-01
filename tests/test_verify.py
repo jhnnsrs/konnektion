@@ -147,10 +147,13 @@ def test_a_count_that_disagrees_with_its_blob_is_caught(written):
         pa.array(counts, type=pa.int32()),
     )
     written.objects[path] = table_to_parquet(bad)
-    # The blob decoder itself refuses a length that cannot hold the declared count, which is the
-    # earlier and better place for this to fail.
-    with pytest.raises(konnektion.FormatError, match="declares"):
-        konnektion.verify(konnektion.open_collection(written, "p"), tier="blobs")
+    # The blob decoder refuses a length that cannot hold the declared count; the verifier turns
+    # that refusal into a failed check rather than an exception, so the rest of the report --
+    # the column scan that may explain it -- still reaches the caller.
+    report = konnektion.verify(konnektion.open_collection(written, "p"), tier="blobs")
+    assert "every cell decodes" in names(report), str(report)
+    failed = {check.name: check for check in report.failures}["every cell decodes"]
+    assert any("declares" in example for example in failed.examples), str(report)
 
 
 # --------------------------------------------------------------------------- #

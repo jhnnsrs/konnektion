@@ -182,9 +182,25 @@ def subset(network: Network, keep: npt.NDArray[np.bool_]) -> tuple[Network, npt.
             radii=None if network.radii is None else network.radii[kept],
             node_ids=network.ids()[kept],
             root=root,
+            attributes=_subset_attributes(network, kept),
         ),
         kept,
     )
+
+
+def _subset_attributes(
+    network: Network, kept: npt.NDArray[np.int64]
+) -> dict[str, npt.NDArray[np.float64]] | None:
+    """Attributes of the surviving nodes, indexed and never recomputed.
+
+    The one rule that keeps every attribute LOD-correct: a metric is computed once, on the full
+    level-0 graph, and a coarse level carries the *same values* at the nodes it kept. Recomputing
+    a degree or a Strahler order on a pruned graph would describe the pruned graph -- a claim
+    about the build, not about the data.
+    """
+    if network.attributes is None:
+        return None
+    return {name: values[kept] for name, values in network.attributes.items()}
 
 
 def prune_to_order(
@@ -385,9 +401,66 @@ def simplify(
             radii=None if network.radii is None else network.radii[kept],
             node_ids=network.ids()[kept],
             root=root,
+            attributes=_subset_attributes(network, kept),
         ),
         kept,
     )
+
+
+# --------------------------------------------------------------------------- #
+# per-node metrics
+# --------------------------------------------------------------------------- #
+
+
+def depth_from_root(network: Network) -> npt.NDArray[np.float64]:
+    """How many edges from the distinguished root each node is, ``NaN`` where unanswerable.
+
+    Defined relative to ``network.root`` and nothing else: an object with no root has no "up",
+    so every value is ``NaN`` rather than a depth from an arbitrarily elected node -- a number
+    that would change when the caller renumbered their nodes. A rooted object with more than one
+    component gets ``NaN`` outside the root's component for the same reason.
+    """
+    depths = np.full(network.node_count, np.nan, dtype=np.float64)
+    if network.root is None or not network.node_count:
+        return depths
+    adjacency = neighbour_lists(network)
+    depths[network.root] = 0.0
+    queue = [network.root]
+    while queue:
+        node = queue.pop(0)
+        for neighbour in adjacency[node]:
+            if np.isnan(depths[neighbour]):
+                depths[neighbour] = depths[node] + 1.0
+                queue.append(neighbour)
+    return depths
+
+
+def component_labels(network: Network) -> npt.NDArray[np.int64]:
+    """Which connected piece each node belongs to, labelled 0.. in first-seen order.
+
+    The label order follows :func:`spanning_forest`'s seeding -- the distinguished root's
+    component first when there is one, then lowest-numbered seeds -- so label 0 is the component
+    a viewer would call *the* object.
+    """
+    adjacency = neighbour_lists(network)
+    labels = np.full(network.node_count, -1, dtype=np.int64)
+    seeds = list(range(network.node_count))
+    if network.root is not None:
+        seeds = [network.root, *seeds]
+    label = 0
+    for seed in seeds:
+        if labels[seed] >= 0:
+            continue
+        labels[seed] = label
+        queue = [seed]
+        while queue:
+            node = queue.pop()
+            for neighbour in adjacency[node]:
+                if labels[neighbour] < 0:
+                    labels[neighbour] = label
+                    queue.append(neighbour)
+        label += 1
+    return labels
 
 
 # --------------------------------------------------------------------------- #
@@ -444,7 +517,9 @@ def polyline_deviation(
 
 
 __all__ = [
+    "component_labels",
     "degrees",
+    "depth_from_root",
     "douglas_peucker",
     "neighbour_lists",
     "polyline_deviation",

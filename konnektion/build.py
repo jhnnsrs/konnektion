@@ -22,7 +22,7 @@ checks at the ``topology`` tier, and what makes each level independently correct
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import numpy as np
@@ -30,6 +30,7 @@ import numpy.typing as npt
 
 from konnektion import geometry
 from konnektion.codecs.blobs import (
+    encode_attribute_values,
     encode_edges,
     encode_ghost_cells,
     encode_ghost_positions,
@@ -38,14 +39,25 @@ from konnektion.codecs.blobs import (
     encode_radii,
 )
 from konnektion.errors import FormatError
-from konnektion.frames import arrow_schemas, build_table
+from konnektion.frames import (
+    arrow_schemas,
+    attribute_column,
+    build_table,
+    ghost_attribute_column,
+)
 from konnektion.manifest import (
+    ATTRIBUTE_COMPONENT,
+    ATTRIBUTE_DEGREE,
+    ATTRIBUTE_DEPTH,
+    ATTRIBUTE_FLOAT32,
+    ATTRIBUTE_STRAHLER,
     CODEC_NONE,
     COMPRESSION_NONE,
     MAX_ORDINAL,
     NODE_IDS_UINT64,
     RADII_FLOAT32,
     RADII_NONE,
+    Attribute,
     Coarsening,
     Encoding,
     Grid,
@@ -64,6 +76,18 @@ OVERVIEW_TARGET_BYTES = 256 * 1024
 #: The most levels the adaptive ladder will build, however large the input.
 MAX_LEVELS = 12
 
+#: The per-node metrics every build computes and declares, in declaration order. All four are
+#: O(nodes + edges) on adjacency the build walks anyway, so an opt-in flag would only create
+#: collections that lack the vocabulary for no saving. ``strahler`` and ``depth`` are ``NaN``
+#: throughout an object with no distinguished root -- both are statements relative to a root,
+#: and electing one arbitrarily would bake the caller's node numbering into the data.
+INTRINSIC_ATTRIBUTES: tuple[tuple[str, str], ...] = (
+    ("strahler", ATTRIBUTE_STRAHLER),
+    ("degree", ATTRIBUTE_DEGREE),
+    ("depth", ATTRIBUTE_DEPTH),
+    ("component", ATTRIBUTE_COMPONENT),
+)
+
 
 @dataclass
 class NetworkCollection:
@@ -81,6 +105,7 @@ class NetworkCollection:
     shards: list[tuple[int, Any]]
     axes: list[str] | None = None
     shape: tuple[int, int, int] | None = None
+    attributes: list[Attribute] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def manifest(self) -> Manifest:
@@ -90,6 +115,7 @@ class NetworkCollection:
             encoding=self.encoding,
             axes=self.axes,
             shape=self.shape,
+            attributes=tuple(self.attributes),
             counts={
                 "objects": int(self.object_catalog.num_rows),
                 "cells": int(self.cell_catalog.num_rows),
@@ -130,6 +156,55 @@ def choose_cell_size(
         chosen.append(int(2 ** min(power, 16)))
     del levels
     return (chosen[0], chosen[1], chosen[2])
+
+
+def _with_attributes(
+    objects: dict[int, Network],
+) -> tuple[dict[int, Network], list[Attribute]]:
+    """Compute the intrinsic metrics and merge the caller's attributes, once, on the full graphs.
+
+    Every declared name is present on every object -- a caller attribute one object lacks is
+    ``NaN``-filled rather than refused, because a partial measurement is a normal state of real
+    data and a per-object column set would make the manifest a lie for somebody. What *is*
+    refused is a caller attribute wearing an intrinsic name: the manifest's ``semantics`` would
+    then claim konnektion computed values it never saw.
+    """
+    intrinsic_names = {name for name, _ in INTRINSIC_ATTRIBUTES}
+    user_names = sorted(
+        {name for network in objects.values() for name in (network.attributes or {})}
+    )
+    collisions = sorted(intrinsic_names & set(user_names))
+    if collisions:
+        raise FormatError(
+            f"Attribute(s) {', '.join(collisions)} collide with the metrics konnektion computes "
+            f"itself ({', '.join(sorted(intrinsic_names))}). Rename yours -- the manifest's "
+            f"semantics field would otherwise claim these values were computed here."
+        )
+
+    declared = [
+        *(Attribute(name=name, semantics=semantics) for name, semantics in INTRINSIC_ATTRIBUTES),
+        *(Attribute(name=name) for name in user_names),
+    ]
+
+    enriched: dict[int, Network] = {}
+    for object_id, network in objects.items():
+        count = network.node_count
+        rooted = network.root is not None
+        computed: dict[str, npt.NDArray[np.float64]] = {
+            "strahler": (
+                geometry.strahler_orders(network).astype(np.float64)
+                if rooted
+                else np.full(count, np.nan)
+            ),
+            "degree": geometry.degrees(network).astype(np.float64),
+            "depth": geometry.depth_from_root(network),
+            "component": geometry.component_labels(network).astype(np.float64),
+        }
+        supplied = network.attributes or {}
+        for name in user_names:
+            computed[name] = supplied.get(name, np.full(count, np.nan))
+        enriched[object_id] = replace(network, attributes=computed)
+    return enriched, declared
 
 
 def _coarsened_levels(
@@ -251,6 +326,11 @@ def build_collection(
 
     ``radii`` left unset carries a radius exactly when the objects have one, as ``FLOAT32``.
     Pass ``RADII_NONE`` to drop it, or the quantized encoding to trade precision for bytes.
+
+    Every build also computes and stores the :data:`INTRINSIC_ATTRIBUTES` (Strahler order,
+    degree, depth from root, component), on the full level-0 graph, beside whatever per-node
+    ``attributes`` the objects carry themselves. Coarser levels subset those values and never
+    recompute them, so a node's metric is the same number at every level it survives to.
     """
     coerced = coerce_objects(objects)
     if len(coerced) > MAX_ORDINAL:
@@ -264,7 +344,9 @@ def build_collection(
                 f"the positive octant only, so shift the graph before building."
             )
 
-    schemas = arrow_schemas()
+    coerced, declared_attributes = _with_attributes(coerced)
+    attribute_names = [attribute.name for attribute in declared_attributes]
+    schemas = arrow_schemas(attribute_names=attribute_names)
     grid_cell_size = tuple(int(c) for c in (cell_size or choose_cell_size(coerced)))
 
     with_radii = any(network.radii is not None for network in coerced.values())
@@ -339,6 +421,7 @@ def build_collection(
                 encoding,
                 errors.get(cell, 0.0),
                 ordinals,
+                attribute_names,
             )
             shard_rows[level].append(row)
             cell_rows.append(catalog)
@@ -357,6 +440,7 @@ def build_collection(
         shards=[(level, build_table(shard_rows[level], schemas["geometry"])) for level in range(depth)],
         axes=None if axes is None else [str(name) for name in axes],
         shape=shape,
+        attributes=declared_attributes,
         notes=notes,
     )
 
@@ -408,6 +492,7 @@ def _emit_cell(
     encoding: Encoding,
     error: float,
     ordinals: Mapping[int, int],
+    attribute_names: Sequence[str] = (),
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Pack every object's share of one cell into a geometry row and its catalog entry.
 
@@ -423,6 +508,12 @@ def _emit_cell(
     ghost_ids: list[npt.NDArray[np.int64]] = []
     ghost_owners: list[npt.NDArray[np.int64]] = []
     ghost_radii: list[npt.NDArray[np.float64]] = []
+    owned_attribute_values: dict[str, list[npt.NDArray[np.float64]]] = {
+        name: [] for name in attribute_names
+    }
+    ghost_attribute_values: dict[str, list[npt.NDArray[np.float64]]] = {
+        name: [] for name in attribute_names
+    }
     edges: list[npt.NDArray[np.int64]] = []
     object_ids: list[int] = []
     object_ordinals: list[int] = []
@@ -448,6 +539,10 @@ def _emit_cell(
                 np.zeros(len(residents)) if source is None else source[residents]
             )
             ghost_radii.append(np.zeros(len(ghosts)) if source is None else source[ghosts])
+        for name in attribute_names:
+            values = (network.attributes or {})[name]
+            owned_attribute_values[name].append(values[residents])
+            ghost_attribute_values[name].append(values[ghosts])
 
         # An index below len(residents) is an owned node; at or above it, a ghost. The two go to
         # different places in the row, so they are rebased differently.
@@ -515,8 +610,26 @@ def _emit_cell(
             all_owners, level, cell_size, encoding,
         )
 
+    # Ghost values ride in their own blob like ghost radii do, but need no owner-cell dance:
+    # a float32 is not quantized against any box.
+    attribute_blobs: dict[str, bytes] = {}
+    for name in attribute_names:
+        attribute_blobs[attribute_column(name)] = encode_attribute_values(
+            np.concatenate(owned_attribute_values[name]) if owned_attribute_values[name] else np.zeros(0),
+            declaration=ATTRIBUTE_FLOAT32,
+            codec=encoding.codec,
+            compression=encoding.compression,
+        )
+        attribute_blobs[ghost_attribute_column(name)] = encode_attribute_values(
+            np.concatenate(ghost_attribute_values[name]) if ghost_attribute_values[name] else np.zeros(0),
+            declaration=ATTRIBUTE_FLOAT32,
+            codec=encoding.codec,
+            compression=encoding.compression,
+        )
+
     blobs = [position_blob, id_blob, edge_blob, ghost_position_blob, ghost_cell_blob, ghost_id_blob]
     blobs += [blob for blob in (radius_blob, ghost_radius_blob) if blob is not None]
+    blobs += list(attribute_blobs.values())
 
     row = {
         "level": level,
@@ -537,6 +650,7 @@ def _emit_cell(
         "object_node_offsets": node_offsets,
         "object_ghost_offsets": ghost_offsets,
         "object_edge_offsets": edge_offsets,
+        **attribute_blobs,
     }
 
     # The box covers the ghosts too: it is what a viewer culls against, and an edge reaching into
@@ -649,6 +763,7 @@ def _shape_of(objects: Mapping[int, Network]) -> tuple[int, int, int] | None:
 
 
 __all__ = [
+    "INTRINSIC_ATTRIBUTES",
     "MAX_LEVELS",
     "OVERVIEW_TARGET_BYTES",
     "NetworkCollection",

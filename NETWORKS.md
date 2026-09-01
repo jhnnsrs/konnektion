@@ -228,3 +228,37 @@ their catalog box; the discrepancy was 5.6e-4 voxels against a 1.95e-3 quantum.
 
 The box also covers the cell's **ghosts**, because this cell is the one that draws those edges. A
 box stopping at the cell face would cull away geometry the row is responsible for.
+
+## 8. Per-node attributes: computed once, declared, only ever subset
+
+A geometry row may carry `attr_<name>` / `ghost_attr_<name>` blob pairs — one `float32` per owned
+node and per ghost, in the node arrays' own order — declared in a top-level manifest key:
+
+```json
+"attributes": [
+  {"name": "strahler", "encoding": "FLOAT32", "semantics": "STRAHLER"},
+  {"name": "tortuosity", "encoding": "FLOAT32", "semantics": null}
+]
+```
+
+The key sits **beside** `encoding`, not inside it, deliberately: the nine encoding keys are
+required-never-defaulted, so a tenth would make every existing collection unreadable for a
+backwards-compatible addition. A spec-1 reader that predates attributes ignores the key; a manifest
+that predates the question parses to none. `NaN` is "this node has no answer"; infinities are
+refused at the gate.
+
+Every build computes and stores four intrinsics on the **full level-0 graph** — Strahler order,
+degree, depth from root, connected component — beside whatever per-node columns the caller passed
+on `Network.attributes`. `strahler` and `depth` are NaN throughout an object with no distinguished
+root: both are statements relative to a root, and electing one arbitrarily would bake the caller's
+node numbering into the data. A caller attribute one object lacks is NaN-filled rather than
+refused; a caller attribute wearing an intrinsic name is refused, because the manifest's
+`semantics` would then claim konnektion computed values it never saw. `radius` is not an attribute
+— it travels in the `radii` encoding — and an attribute of that name is refused too.
+
+**Coarse levels subset the values and never recompute them.** A pruned graph's degree describes
+the pruned graph, not the data; the metric a level draws must be the metric of the thing that was
+traced. This is the same rule that makes ghosting safe (nothing moves, so identity survives), and
+it is verified: the topology tier traces every coarse value back to its level-0 value, and the
+blobs tier holds the geometry's `attr_*` columns to exactly the manifest's declarations, in both
+directions.

@@ -16,6 +16,7 @@ required key.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -165,6 +166,32 @@ SIMPLIFICATION_CUSTOM = "CUSTOM"
 
 SORT_KEY_MORTON = "MORTON"
 
+#: Per-node attribute values: one float per owned node, one per ghost, in the node arrays' own
+#: order. ``FLOAT32`` is the only encoding of version 1 -- an attribute is a measurement or a
+#: computed metric, ``NaN`` is its "no value", and both need a float to say so. A quantized
+#: variant would arrive as a second value here, the way ``radii`` grew one.
+ATTRIBUTE_FLOAT32 = "FLOAT32"
+
+#: What an attribute *means*, for the ones a builder computes rather than is handed. A reader
+#: that recognises a semantics value may treat the column specially (Strahler order is what the
+#: pruning schedule thresholds on); one that does not still has the name, the encoding and the
+#: values. ``None`` -- written as JSON ``null`` -- is a caller-supplied attribute the format
+#: makes no claim about.
+ATTRIBUTE_STRAHLER = "STRAHLER"
+ATTRIBUTE_DEGREE = "DEGREE"
+ATTRIBUTE_DEPTH = "DEPTH"
+ATTRIBUTE_COMPONENT = "COMPONENT"
+
+_ATTRIBUTE_ENCODINGS = frozenset({ATTRIBUTE_FLOAT32})
+_ATTRIBUTE_SEMANTICS = frozenset(
+    {ATTRIBUTE_STRAHLER, ATTRIBUTE_DEGREE, ATTRIBUTE_DEPTH, ATTRIBUTE_COMPONENT}
+)
+
+#: What an attribute may be called. Lowercase with underscores because the name becomes a pair
+#: of Parquet columns (``attr_<name>`` / ``ghost_attr_<name>``) and, downstream, a value in a
+#: picker -- both places where case-sensitivity and punctuation are trouble nobody needs.
+ATTRIBUTE_NAME_PATTERN = re.compile(r"[a-z_][a-z0-9_]{0,63}\Z")
+
 _ENCODING_VOCABULARY: dict[str, frozenset[str]] = {
     "positions": frozenset({POSITIONS_UINT16_QUANTIZED_PER_CELL}),
     "edges": frozenset({EDGES_UINT32_PAIRS}),
@@ -263,6 +290,87 @@ class FileEntry:
         raise FormatError(
             f"A file entry in a manifest is a path, or an object carrying one, got {raw!r}."
         )
+
+
+@dataclass(frozen=True)
+class Attribute:
+    """One per-node value column the collection carries, named in the manifest.
+
+    An attribute rides beside the geometry -- ``attr_<name>`` and ``ghost_attr_<name>`` blob
+    columns on every geometry row -- and is declared here so a reader knows to look for it and a
+    server can publish the vocabulary without opening a Parquet file. Values are computed **once,
+    on the full level-0 graph**, and only ever subset for coarser levels: a pruned graph's degree
+    would lie about the graph it was traced from.
+
+    ``semantics`` says what the values mean for the columns konnektion computes itself
+    (:data:`ATTRIBUTE_STRAHLER` and friends); ``None`` is a caller-supplied column the format
+    makes no claim about beyond its shape.
+    """
+
+    name: str
+    encoding: str = ATTRIBUTE_FLOAT32
+    semantics: str | None = None
+
+    def __post_init__(self) -> None:
+        """Refuse a declaration a reader could not act on."""
+        if not ATTRIBUTE_NAME_PATTERN.match(self.name):
+            raise FormatError(
+                f"An attribute name is lowercase letters, digits and underscores, starting with "
+                f"a letter or underscore, at most 64 characters -- it becomes a Parquet column "
+                f"and a picker value -- got {self.name!r}."
+            )
+        if self.name == "radius":
+            raise FormatError(
+                "`radius` is not an attribute: a per-node radius travels in the `radii` blob "
+                "the manifest's `encoding.radii` declares, so an attribute of that name would "
+                "shadow it. Pass radii to the builder instead."
+            )
+        if self.encoding not in _ATTRIBUTE_ENCODINGS:
+            raise FormatError(
+                f"An attribute's `encoding` is {self.encoding!r}; the format defines "
+                f"{', '.join(sorted(_ATTRIBUTE_ENCODINGS))}."
+            )
+        if self.semantics is not None and self.semantics not in _ATTRIBUTE_SEMANTICS:
+            raise FormatError(
+                f"An attribute's `semantics` is {self.semantics!r}; the format defines "
+                f"{', '.join(sorted(_ATTRIBUTE_SEMANTICS))}, or null for a caller-supplied "
+                f"column the format makes no claim about."
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        """The manifest's entry for this attribute, ``semantics`` written even when null."""
+        return {"name": self.name, "encoding": self.encoding, "semantics": self.semantics}
+
+    @classmethod
+    def from_any(cls, raw: Any) -> Attribute:  # noqa: ANN401
+        """Read one declared attribute."""
+        if not isinstance(raw, Mapping) or not isinstance(raw.get("name"), str):
+            raise FormatError(
+                f"An entry in a manifest's `attributes` is an object naming an attribute, "
+                f"got {raw!r}."
+            )
+        semantics = raw.get("semantics")
+        return cls(
+            name=str(raw["name"]),
+            encoding=str(raw.get("encoding", ATTRIBUTE_FLOAT32)),
+            semantics=None if semantics is None else str(semantics),
+        )
+
+
+def _read_attributes(raw: Any) -> tuple[Attribute, ...]:  # noqa: ANN401
+    """Read a manifest's ``attributes``, absent meaning none -- the pre-attribute manifests."""
+    if raw is None:
+        return ()
+    if isinstance(raw, str) or not isinstance(raw, Sequence):
+        raise FormatError(f"A manifest's `attributes` is a list of declarations, got {raw!r}.")
+    declared = tuple(Attribute.from_any(entry) for entry in raw)
+    names = [attribute.name for attribute in declared]
+    if len(set(names)) != len(names):
+        repeated = sorted({name for name in names if names.count(name) > 1})
+        raise FormatError(
+            f"A manifest declares each attribute once; {', '.join(repeated)} appear(s) twice."
+        )
+    return declared
 
 
 @dataclass(frozen=True)
@@ -562,6 +670,12 @@ class Manifest:
     spec_version: str = SPEC_VERSION
     shape: tuple[int, int, int] | None = None
     axes: list[str] | None = None
+    #: The per-node value columns the geometry rows carry, in declaration order. Empty is the
+    #: normal state of a manifest written before attributes existed, and a spec-1 reader that
+    #: predates them ignores the key -- which is why this is a key beside ``encoding`` rather
+    #: than inside it: the nine encoding keys are required-never-defaulted, and a tenth would
+    #: make every existing collection unreadable for a backwards-compatible addition.
+    attributes: tuple[Attribute, ...] = ()
     counts: dict[str, int] = field(default_factory=dict)
     #: What the writer actually landed: ``cells`` and ``objects`` as single entries, and
     #: ``levels`` as a mapping of level number to the list of parts that level was split into.
@@ -574,6 +688,9 @@ class Manifest:
             "specVersion": self.spec_version,
             "grid": self.grid.to_dict(),
             "encoding": self.encoding.to_dict(),
+            # Written even when empty, like `shape` and `axes`: a reader can then tell
+            # "carries none" from "predates the question".
+            "attributes": [attribute.to_dict() for attribute in self.attributes],
             "shape": None if self.shape is None else [int(v) for v in self.shape],
             "axes": None if self.axes is None else list(self.axes),
             "counts": {key: int(value) for key, value in sorted(self.counts.items())},
@@ -629,12 +746,19 @@ class Manifest:
             spec_version=version,
             shape=_read_shape(raw.get("shape")),
             axes=_read_axes(raw.get("axes")),
+            attributes=_read_attributes(raw.get("attributes")),
             counts={str(key): int(value) for key, value in counts.items()},
             files={str(key): value for key, value in files.items()},
         )
 
 
 __all__ = [
+    "ATTRIBUTE_COMPONENT",
+    "ATTRIBUTE_DEGREE",
+    "ATTRIBUTE_DEPTH",
+    "ATTRIBUTE_FLOAT32",
+    "ATTRIBUTE_NAME_PATTERN",
+    "ATTRIBUTE_STRAHLER",
     "CELL_CATALOG_PATH",
     "CODEC_NONE",
     "COMPRESSION_NONE",
@@ -658,6 +782,7 @@ __all__ = [
     "SIMPLIFICATION_NONE",
     "SORT_KEY_MORTON",
     "SPEC_VERSION",
+    "Attribute",
     "Coarsening",
     "Encoding",
     "FileEntry",

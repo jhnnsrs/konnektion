@@ -20,6 +20,7 @@ import numpy as np
 import numpy.typing as npt
 
 from konnektion.codecs.blobs import (
+    decode_attribute_values,
     decode_edges,
     decode_ghost_cells,
     decode_ghost_positions,
@@ -27,6 +28,7 @@ from konnektion.codecs.blobs import (
     decode_positions,
     decode_radii,
 )
+from konnektion.frames import attribute_column, ghost_attribute_column
 from konnektion.errors import FormatError, UnfinishedCollectionError
 from konnektion.frames import parquet_to_table
 from konnektion.manifest import (
@@ -102,6 +104,10 @@ class DecodedCell:
     ``edges`` index into ``positions``, so an edge with an endpoint at or past ``node_count``
     reaches into a neighbouring cell. Drawing this cell alone is correct: the ghost carries the
     real coordinate of that endpoint, decoded against the cell that owns it.
+
+    ``attributes`` holds one array per attribute the manifest declares, ordered like
+    ``positions`` -- owned values first, then the ghosts' -- with ``NaN`` where the graph had
+    no answer.
     """
 
     level: int
@@ -117,6 +123,7 @@ class DecodedCell:
     object_node_offsets: tuple[int, ...]
     object_ghost_offsets: tuple[int, ...]
     object_edge_offsets: tuple[int, ...]
+    attributes: dict[str, npt.NDArray[np.float64]] = field(default_factory=dict)
 
     @property
     def is_ghost(self) -> npt.NDArray[np.bool_]:
@@ -249,6 +256,35 @@ class Collection:
             )
             radii = np.concatenate([owned_radii, ghost_radii])
 
+        attributes: dict[str, npt.NDArray[np.float64]] = {}
+        for declared in self.manifest.attributes:
+            owned_column = attribute_column(declared.name)
+            ghost_column = ghost_attribute_column(declared.name)
+            names = set(table.column_names)
+            if owned_column not in names or ghost_column not in names:
+                raise FormatError(
+                    f"The manifest declares attribute {declared.name!r} but level {level} cell "
+                    f"{cell}'s geometry has no {owned_column}/{ghost_column} columns. The "
+                    f"manifest names what exists, so one of the two is lying."
+                )
+            owned_blob, ghost_blob = get(owned_column), get(ghost_column)
+            if owned_blob is None or ghost_blob is None:
+                raise FormatError(
+                    f"The manifest declares attribute {declared.name!r} but level {level} cell "
+                    f"{cell} holds no blob for it."
+                )
+            owned_values = decode_attribute_values(
+                owned_blob, declaration=declared.encoding, codec=encoding.codec,
+                compression=encoding.compression, count=node_count,
+            )
+            ghost_values = decode_attribute_values(
+                ghost_blob, declaration=declared.encoding, codec=encoding.codec,
+                compression=encoding.compression, count=ghost_count,
+            )
+            attributes[declared.name] = (
+                np.concatenate([owned_values, ghost_values]) if ghost_count else owned_values
+            )
+
         return DecodedCell(
             level=level,
             cell=cell,
@@ -263,6 +299,7 @@ class Collection:
             object_node_offsets=tuple(int(v) for v in get("object_node_offsets")),
             object_ghost_offsets=tuple(int(v) for v in get("object_ghost_offsets")),
             object_edge_offsets=tuple(int(v) for v in get("object_edge_offsets")),
+            attributes=attributes,
         )
 
     def iter_cells(self, level: int) -> Iterator[DecodedCell]:
@@ -272,6 +309,16 @@ class Collection:
             table = self._part_table(level, part)
             for row in range(table.num_rows):
                 yield self._decode_row(table, row)
+
+    def geometry_columns(self, level: int) -> dict[int, tuple[str, ...]]:
+        """The column names of each geometry part of one level, keyed by part number.
+
+        What a verifier compares the manifest's attribute declarations against: the columns are
+        the one place an undeclared ``attr_*`` -- or a declared one that never landed -- shows
+        up without decoding anything.
+        """
+        parts = sorted({entry.part for entry in self.cells_at(level) if entry.part is not None})
+        return {part: tuple(self._part_table(level, part).column_names) for part in parts}
 
 
 def _decode_ghost_radii(

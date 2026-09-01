@@ -42,6 +42,7 @@ store; :mod:`konnektion.verify` checks the claims nothing downstream can see.
 """
 
 from konnektion.build import (
+    INTRINSIC_ATTRIBUTES,
     MAX_LEVELS,
     OVERVIEW_TARGET_BYTES,
     NetworkCollection,
@@ -59,6 +60,9 @@ from konnektion.errors import (
 )
 from konnektion.frames import REQUIRED_COLUMNS, arrow_schemas, validate_columns
 from konnektion.geometry import (
+    component_labels,
+    degrees,
+    depth_from_root,
     douglas_peucker,
     prune_to_order,
     simplify,
@@ -68,6 +72,7 @@ from konnektion.geometry import (
 from konnektion.manifest import (
     MANIFEST_NAME,
     SPEC_VERSION,
+    Attribute,
     Coarsening,
     Encoding,
     Grid,
@@ -81,6 +86,7 @@ from konnektion.verify import TIERS, Check, VerifyReport, verify
 from konnektion.writer import awrite_collection, write_collection
 
 __all__ = [
+    "INTRINSIC_ATTRIBUTES",
     "MANIFEST_NAME",
     "MAX_LEVELS",
     "OVERVIEW_TARGET_BYTES",
@@ -88,6 +94,7 @@ __all__ = [
     "REQUIRED_COLUMNS",
     "SPEC_VERSION",
     "TIERS",
+    "Attribute",
     "Check",
     "Coarsening",
     "Collection",
@@ -113,8 +120,11 @@ __all__ = [
     "cell_of",
     "choose_cell_size",
     "coerce_network",
+    "component_labels",
     "decode_edges",
     "decode_positions",
+    "degrees",
+    "depth_from_root",
     "douglas_peucker",
     "encode_positions",
     "morton_decode",
