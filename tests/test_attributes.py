@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 import konnektion
-from konnektion.frames import attribute_column, ghost_attribute_column, parquet_to_table
+from konnektion.frames import attribute_column, parquet_to_table
 from konnektion.manifest import Attribute, Manifest
 from konnektion.sources import Network
 from konnektion.verify import _members

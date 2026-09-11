@@ -115,6 +115,7 @@ __all__ = [
     "UnfinishedCollectionError",
     "VerifyReport",
     "arrow_schemas",
+    "awrite_collection",
     "build_collection",
     "cell_box",
     "cell_of",
@@ -136,6 +137,5 @@ __all__ = [
     "unbranched_runs",
     "validate_columns",
     "verify",
-    "awrite_collection",
     "write_collection",
 ]

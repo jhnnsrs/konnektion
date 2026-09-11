@@ -28,9 +28,8 @@ from konnektion.codecs.blobs import (
     decode_positions,
     decode_radii,
 )
-from konnektion.frames import attribute_column, ghost_attribute_column
 from konnektion.errors import FormatError, UnfinishedCollectionError
-from konnektion.frames import parquet_to_table
+from konnektion.frames import attribute_column, ghost_attribute_column, parquet_to_table
 from konnektion.manifest import (
     CELL_CATALOG_PATH,
     MANIFEST_NAME,
