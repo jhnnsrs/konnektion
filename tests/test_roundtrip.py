@@ -142,3 +142,24 @@ def test_a_negative_cell_index_is_refused():
     """The octree addresses the positive octant only."""
     with pytest.raises(ValueError, match="non-negative"):
         morton_encode(np.array([[-1, 0, 0]]))
+
+
+def test_the_parquet_codec_is_the_callers_and_reaches_every_file(collection):
+    """A reader that lacks a decoder would draw nothing, so the codec is stated, not inherited."""
+    import io
+
+    import pyarrow.parquet as pq
+
+    store = konnektion.MemoryStore()
+    konnektion.write_collection(collection, store, "c", parquet_compression="snappy")
+
+    parts = [path for path in store.objects if path.endswith(".parquet")]
+    assert parts
+    for path in parts:
+        metadata = pq.ParquetFile(io.BytesIO(store.objects[path])).metadata
+        codecs = {
+            metadata.row_group(group).column(column).compression
+            for group in range(metadata.num_row_groups)
+            for column in range(metadata.num_columns)
+        }
+        assert codecs == {"SNAPPY"}, path
