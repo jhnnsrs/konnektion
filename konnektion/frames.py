@@ -180,7 +180,7 @@ def _column_names(table: Any) -> Iterable[str]:  # noqa: ANN401
     raise FormatError(f"konnektion cannot read column names off a {type(table).__name__}.")
 
 
-def validate_columns(table: Any, role: str) -> None:  # noqa: ANN401
+def validate_columns(table: pa.Table, role: str) -> None:
     """Refuse a frame missing a column its role requires, before an upload is spent on it.
 
     The earliest point the mistake is catchable and the only point it is cheap.

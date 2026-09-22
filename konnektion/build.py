@@ -27,6 +27,7 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+import pyarrow as pa
 
 from konnektion import geometry
 from konnektion.codecs.blobs import (
@@ -38,6 +39,7 @@ from konnektion.codecs.blobs import (
     encode_positions,
     encode_radii,
 )
+from konnektion.codecs.compression import compress
 from konnektion.errors import FormatError
 from konnektion.frames import (
     arrow_schemas,
@@ -63,8 +65,9 @@ from konnektion.manifest import (
     Grid,
     Manifest,
 )
-from konnektion.octree import cell_box, cell_of, morton_decode
+from konnektion.octree import cell_box, cell_of, morton_decode, morton_encode_one
 from konnektion.sources import Network, NetworkSource, coerce_objects
+from konnektion.stores.protocol import KonnektionStore
 
 #: How many bytes of geometry the coarsest level should fit inside before the ladder stops.
 #:
@@ -100,9 +103,10 @@ class NetworkCollection:
 
     grid: Grid
     encoding: Encoding
-    cell_catalog: Any
-    object_catalog: Any
-    shards: list[tuple[int, Any]]
+    cell_catalog: pa.Table
+    object_catalog: pa.Table
+    #: One geometry table per level, paired with the level it belongs to.
+    shards: list[tuple[int, pa.Table]]
     axes: list[str] | None = None
     shape: tuple[int, int, int] | None = None
     attributes: list[Attribute] = field(default_factory=list)
@@ -123,7 +127,7 @@ class NetworkCollection:
             },
         )
 
-    def write(self, store: Any, prefix: str = "") -> Manifest:  # noqa: ANN401
+    def write(self, store: KonnektionStore, prefix: str = "") -> Manifest:
         """Write the whole tree into ``store``, landing the manifest last."""
         from konnektion.writer import write_collection
 
@@ -291,8 +295,6 @@ def _child_mask(cell: int, level: int, present: Mapping[int, set[int]]) -> int:
     if level == 0:
         return 0
     i, j, k = morton_decode(cell)
-    from konnektion.octree import morton_encode_one
-
     mask = 0
     below = present.get(level - 1, set())
     for bit, (di, dj, dk) in enumerate(
@@ -708,8 +710,6 @@ def _encode_ghost_radii(
         )
         for index in range(len(radii))
     ]
-    from konnektion.codecs.compression import compress
-
     return compress(b"".join(pieces), encoding.compression)
 
 
