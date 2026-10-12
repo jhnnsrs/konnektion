@@ -100,6 +100,23 @@ class Network:
 #: a plain ``(nodes, edges)`` pair.
 NetworkSource = Any
 
+#: Graph libraries whose graphs are refused at the gate, by top-level module, and the adapter
+#: the refusal names. Matched on the module name so that nothing here imports any of them.
+_GRAPH_LIBRARY_ADAPTERS = {"networkx": "konnektion.contrib.networkx.from_networkx"}
+
+
+def _graph_library(source: object) -> str | None:
+    """The graph library an object's class comes from, if it is one with an adapter.
+
+    The whole MRO is walked, because a caller's own ``class Skeleton(nx.Graph)`` lives in the
+    caller's module and is a networkx graph all the same.
+    """
+    for cls in type(source).__mro__:
+        library = cls.__module__.split(".")[0]
+        if library in _GRAPH_LIBRARY_ADAPTERS:
+            return library
+    return None
+
 
 def coerce_network(source: NetworkSource) -> Network:
     """Turn whatever a caller handed over into a validated :class:`Network`.
@@ -122,6 +139,16 @@ def coerce_network(source: NetworkSource) -> Network:
             source.node_ids,
             source.root,
             source.attributes,
+        )
+    elif (library := _graph_library(source)) is not None:
+        # Before the structural branch on purpose: a graph library's `nodes` and `edges` are
+        # views of keys, not arrays, so its graph satisfies `HasNodesAndEdges` and would be
+        # turned away two lines later for the shape of something it never claimed to be.
+        raise FormatError(
+            f"A {library} graph is not a network yet: its nodes are keys, and konnektion will "
+            f"not guess which attribute holds their positions, in which axis order, or which "
+            f"node is the root. Convert it with `{_GRAPH_LIBRARY_ADAPTERS[library]}(graph, "
+            f"pos=...)`, which makes the caller say so."
         )
     elif isinstance(source, HasNodesAndEdges):
         nodes, edges = source.nodes, source.edges

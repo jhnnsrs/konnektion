@@ -87,6 +87,29 @@ it runs through.
 
 See [NETWORKS.md](NETWORKS.md) for the reasoning behind ghosts, pruning and optional levels.
 
+## Graph libraries
+
+konnektion is a format, not a graph library, and it depends on neither networkx nor anything
+like it. A graph built elsewhere comes in through an adapter, behind an extra:
+
+```python
+# pip install konnektion[networkx]
+from konnektion.contrib.networkx import from_networkx, to_networkx
+
+network, ids = from_networkx(graph, pos="pos", axes="zyx", radius="radius", root=soma)
+collection = konnektion.build_collection({1: network})
+```
+
+A networkx node is a key and a konnektion node is a position, so the adapter guesses nothing:
+which attribute holds the positions, the order of its components, the root and the attributes
+to carry are all arguments. Keys that are non-negative integers become the node ids; any other
+keys are numbered, and `ids` is the key → node id mapping either way — the thing a per-node or
+per-edge table is joined on. Parallel edges and self-loops are refused rather than dropped, and
+a networkx graph handed straight to `build_collection` is refused with a pointer here.
+
+`to_networkx(network)` is the inverse for an in-memory network. The rules an adapter follows are
+written once, in `konnektion/contrib/__init__.py`, for the next library.
+
 ## Verification
 
 Three tiers, cheapest first, each including the ones before it:

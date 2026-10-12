@@ -22,7 +22,10 @@ dependencies = [
 # Writing to S3 (or anywhere else obstore reaches). konnektion only needs three methods off a
 # store, so this is for callers who want one rather than a directory.
 obstore = ["obstore>=0.10"]
-complete = ["obstore>=0.10"]
+# Converting to and from a networkx graph, in `konnektion.contrib.networkx`. An extra because
+# nothing that builds, writes or reads a collection touches it: it is a door, not a dependency.
+networkx = ["networkx>=3.2"]
+complete = ["obstore>=0.10", "networkx>=3.2"]
 
 [dependency-groups]
 dev = [
@@ -35,6 +38,8 @@ dev = [
     # pyarrow ships no type information of its own, so these stubs are what holds the frames,
     # the reader and the writer to the full strict rule set rather than to `Unknown`.
     "pyarrow-stubs>=20.0.0.20260625",
+    "networkx>=3.2",
+    "types-networkx>=3.2",
 ]
 
 [tool.hatch.build.targets.sdist]
