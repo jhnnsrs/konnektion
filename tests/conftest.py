@@ -89,13 +89,13 @@ def ladder_objects() -> dict[int, Network]:
 @pytest.fixture(scope="session")
 def collection(objects: dict[int, Network]) -> konnektion.NetworkCollection:
     """A built one-level collection."""
-    return konnektion.build_collection(objects, cell_size=(128, 128, 128))
+    return konnektion.build_collection(objects, cell_size=(128, 128, 128), axes=("x", "y", "z"))
 
 
 @pytest.fixture(scope="session")
 def ladder(ladder_objects: dict[int, Network]) -> konnektion.NetworkCollection:
     """A built collection deep enough to have coarser levels."""
-    return konnektion.build_collection(ladder_objects, cell_size=CELL_SIZE)
+    return konnektion.build_collection(ladder_objects, cell_size=CELL_SIZE, axes=("x", "y", "z"))
 
 
 @pytest.fixture()

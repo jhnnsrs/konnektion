@@ -310,13 +310,17 @@ def build_collection(
     *,
     cell_size: Sequence[int] | None = None,
     levels: int | None = None,
-    axes: Sequence[str] | None = ("x", "y", "z"),
+    axes: Sequence[str],
     codec: str = CODEC_NONE,
     compression: str = COMPRESSION_NONE,
     coarsening: Coarsening | None = None,
     radii: str | None = None,
 ) -> NetworkCollection:
     """Build a network collection from ``{object_id: network}``.
+
+    ``axes`` names the three node-position slots, in slot order, and is written into the
+    manifest. **It is required**, with no default: a viewer has no other way to know which
+    slot is which, and a guessed order has no symptom but a transposed drawing.
 
     ``levels`` left unset is **chosen from the data**: the ladder grows only while the coarsest
     level is still bigger than :data:`OVERVIEW_TARGET_BYTES`, and a small collection therefore
@@ -334,6 +338,8 @@ def build_collection(
     ``attributes`` the objects carry themselves. Coarser levels subset those values and never
     recompute them, so a node's metric is the same number at every level it survives to.
     """
+    if axes is None:  # pyright: ignore[reportUnnecessaryComparison]  -- untyped callers still pass it
+        raise TypeError("build_collection needs `axes=`: the names of the three node-position slots, in slot order. Without them the manifest could only be read by guessing which slot is which.")
     coerced = coerce_objects(objects)
     if len(coerced) > MAX_ORDINAL:
         raise FormatError(
@@ -440,7 +446,7 @@ def build_collection(
         cell_catalog=build_table(cell_rows, schemas["cell_catalog"]),
         object_catalog=build_table(object_rows, schemas["object_catalog"]),
         shards=[(level, build_table(shard_rows[level], schemas["geometry"])) for level in range(depth)],
-        axes=None if axes is None else [str(name) for name in axes],
+        axes=[str(name) for name in axes],
         shape=shape,
         attributes=declared_attributes,
         notes=notes,

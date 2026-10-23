@@ -97,7 +97,7 @@ like it. A graph built elsewhere comes in through an adapter, behind an extra:
 from konnektion.contrib.networkx import from_networkx, to_networkx
 
 network, ids = from_networkx(graph, pos="pos", axes="zyx", radius="radius", root=soma)
-collection = konnektion.build_collection({1: network})
+collection = konnektion.build_collection({1: network}, axes=("z", "y", "x"))
 ```
 
 A networkx node is a key and a konnektion node is a position, so the adapter guesses nothing:

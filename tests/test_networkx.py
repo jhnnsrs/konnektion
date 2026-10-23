@@ -70,7 +70,7 @@ def test_a_converted_graph_builds_and_verifies():
         graph, radius="radius", attributes=["load"], root=graph.graph["root"]
     )
 
-    built = konnektion.build_collection({1: network}, cell_size=(128, 128, 128))
+    built = konnektion.build_collection({1: network}, cell_size=(128, 128, 128), axes=("x", "y", "z"))
     store = konnektion.MemoryStore()
     built.write(store, "p")
     report = konnektion.verify(konnektion.open_collection(store, "p"), tier="topology")
@@ -100,7 +100,7 @@ def test_positions_may_come_from_a_layout():
     graph = nx.balanced_tree(2, 4)
     layout = nx.spring_layout(graph, dim=3, center=(100.0, 100.0, 100.0), scale=50.0, seed=1)
     network, _ = from_networkx(graph, pos=layout)
-    built = konnektion.build_collection({1: network}, cell_size=(128, 128, 128))
+    built = konnektion.build_collection({1: network}, cell_size=(128, 128, 128), axes=("x", "y", "z"))
     assert network.nodes.min() >= 50.0 and built.manifest().counts["objects"] == 1
 
 
@@ -250,4 +250,4 @@ class Skeleton(nx.Graph):
 def test_a_bare_graph_is_refused_at_the_gate_with_the_adapter_named(kind: type):
     """It has `nodes` and `edges`, so without this it is turned away for its *shape*."""
     with pytest.raises(FormatError, match=r"konnektion\.contrib\.networkx\.from_networkx"):
-        konnektion.build_collection({1: kind(path())})
+        konnektion.build_collection({1: kind(path())}, axes=("x", "y", "z"))

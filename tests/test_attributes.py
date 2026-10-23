@@ -56,7 +56,7 @@ def test_intrinsic_values_on_a_known_tree():
         edges=np.array([[0, 1], [1, 2], [1, 3]], dtype=np.int64),
         root=0,
     )
-    built = konnektion.build_collection({7: tree}, cell_size=(16, 16, 16))
+    built = konnektion.build_collection({7: tree}, cell_size=(16, 16, 16), axes=("x", "y", "z"))
     store = konnektion.MemoryStore()
     built.write(store, "p")
     opened = konnektion.open_collection(store, "p")
@@ -73,7 +73,7 @@ def test_intrinsic_values_on_a_known_tree():
 
 def test_rootless_strahler_and_depth_are_nan():
     """An object with no distinguished root has no 'up', and the format says so with NaN."""
-    built = konnektion.build_collection({1: chain(5)}, cell_size=(64, 64, 64))
+    built = konnektion.build_collection({1: chain(5)}, cell_size=(64, 64, 64), axes=("x", "y", "z"))
     store = konnektion.MemoryStore()
     built.write(store, "p")
     opened = konnektion.open_collection(store, "p")
@@ -97,7 +97,7 @@ def test_user_attributes_round_trip():
         nodes=tree.nodes, edges=tree.edges, radii=tree.radii, root=tree.root,
         attributes={"tortuosity": tortuosity},
     )
-    built = konnektion.build_collection({4: network}, cell_size=(128, 128, 128))
+    built = konnektion.build_collection({4: network}, cell_size=(128, 128, 128), axes=("x", "y", "z"))
     declared = {attribute.name: attribute for attribute in built.manifest().attributes}
     assert declared["tortuosity"].semantics is None
 
@@ -124,6 +124,7 @@ def test_a_missing_user_attribute_is_nan_filled():
             2: without_it,
         },
         cell_size=(512, 512, 512),
+        axes=("x", "y", "z"),
     )
     store = konnektion.MemoryStore()
     built.write(store, "p")
@@ -141,7 +142,7 @@ def test_an_intrinsic_name_collision_is_refused():
         attributes={"degree": np.zeros(tree.node_count)},
     )
     with pytest.raises(konnektion.FormatError, match="collide"):
-        konnektion.build_collection({1: network}, cell_size=(64, 64, 64))
+        konnektion.build_collection({1: network}, cell_size=(64, 64, 64), axes=("x", "y", "z"))
 
 
 @pytest.mark.parametrize(

@@ -8,7 +8,7 @@ The rules it follows are the ones in :mod:`konnektion.contrib`.
 
     graph = nx.random_geometric_graph(200, 0.2, dim=3)
     network, ids = from_networkx(graph, pos="pos")
-    collection = konnektion.build_collection({1: network})
+    collection = konnektion.build_collection({1: network}, axes=("x", "y", "z"))
 
 **Edge order is networkx's, not the caller's.** ``graph.edges`` walks the adjacency, so an
 undirected graph reports each edge once, from whichever endpoint it reaches first. A caller for
