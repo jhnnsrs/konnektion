@@ -1,0 +1,222 @@
+{
+    "files": {
+        "./tests/test_attributes.py": [
+            {
+                "code": "reportAttributeAccessIssue",
+                "range": {
+                    "startColumn": 42,
+                    "endColumn": 49,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 16,
+                    "endColumn": 53,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 24,
+                    "endColumn": 33,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./tests/test_build.py": [
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 13,
+                    "endColumn": 74,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 17,
+                    "endColumn": 73,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 15,
+                    "endColumn": 58,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 57,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 13,
+                    "endColumn": 74,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 17,
+                    "endColumn": 73,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 11,
+                    "endColumn": 73,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 15,
+                    "endColumn": 72,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 11,
+                    "endColumn": 73,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 15,
+                    "endColumn": 72,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./tests/test_manifest.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 10,
+                    "endColumn": 16,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 10,
+                    "endColumn": 16,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 10,
+                    "endColumn": 16,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 10,
+                    "endColumn": 16,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 10,
+                    "endColumn": 16,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./tests/test_networkx.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 42,
+                    "endColumn": 48,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 4,
+                    "endColumn": 50,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 34,
+                    "endColumn": 40,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 4,
+                    "endColumn": 48,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 34,
+                    "endColumn": 37,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 4,
+                    "endColumn": 50,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 34,
+                    "endColumn": 37,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./tests/test_verify.py": [
+            {
+                "code": "reportOptionalOperand",
+                "range": {
+                    "startColumn": 16,
+                    "endColumn": 25,
+                    "lineCount": 1
+                }
+            }
+        ]
+    }
+}
