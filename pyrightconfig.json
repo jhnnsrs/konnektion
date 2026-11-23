@@ -1,3 +1,15 @@
+// Stricter than the shared standard, and the repo's own: inside konnektion/ every
+// rule basedpyright's `strict` mode turns on is on, except the ones this package
+// turned off before the standard (below). It is spelled out as an execution
+// environment because a `strict` path list would force those back on; extraPaths
+// keeps the package's own imports resolving from the repo, not site-packages.
+// tests/ stays on the shared `standard` mode.
+//
+// Off: reportUnknownMemberType/ArgumentType/VariableType/LambdaType. numpy's
+// .tolist() and .item() are Any by construction (rank and dtype decide), and every
+// graph walk goes through edges.tolist(); the ingest surface (coerce_network)
+// accepts anything structurally carrying nodes/edges, a mapping or a bare pair; and
+// a manifest is dynamic JSON until it is validated. reportMissingTypeStubs: off.
 {
   "extends": "./pyright.shared.json",
   "include": [
@@ -10,5 +22,47 @@
     ".venv",
     "build",
     "dist"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "konnektion",
+      "extraPaths": [
+        "."
+      ],
+      "strictListInference": true,
+      "strictSetInference": true,
+      "strictDictionaryInference": true,
+      "reportUnusedImport": "error",
+      "reportUnusedClass": "error",
+      "reportUnusedFunction": "error",
+      "reportUnusedVariable": "error",
+      "reportDuplicateImport": "error",
+      "reportWildcardImportFromLibrary": "error",
+      "reportUntypedFunctionDecorator": "error",
+      "reportUntypedClassDecorator": "error",
+      "reportUntypedBaseClass": "error",
+      "reportUntypedNamedTuple": "error",
+      "reportPrivateUsage": "error",
+      "reportTypeCommentUsage": "error",
+      "reportConstantRedefinition": "error",
+      "reportDeprecated": "error",
+      "reportInconsistentConstructor": "error",
+      "reportInvalidStringEscapeSequence": "error",
+      "reportUnknownParameterType": "error",
+      "reportMissingParameterType": "error",
+      "reportMissingTypeArgument": "error",
+      "reportInvalidTypeVarUse": "error",
+      "reportUnnecessaryIsInstance": "error",
+      "reportUnnecessaryCast": "error",
+      "reportUnnecessaryComparison": "error",
+      "reportUnnecessaryContains": "error",
+      "reportAssertAlwaysTrue": "error",
+      "reportSelfClsParameterName": "error",
+      "reportInvalidStubStatement": "error",
+      "reportIncompleteStub": "error",
+      "reportUnsupportedDunderAll": "error",
+      "reportUnusedExpression": "error",
+      "reportMatchNotExhaustive": "error"
+    }
   ]
 }
