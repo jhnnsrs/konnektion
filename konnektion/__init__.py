@@ -49,7 +49,12 @@ from konnektion.build import (
     build_collection,
     choose_cell_size,
 )
-from konnektion.codecs import QUANT_MAX, decode_edges, decode_positions, encode_positions
+from konnektion.codecs import (
+    QUANT_MAX,
+    decode_edges,
+    decode_positions,
+    encode_positions,
+)
 from konnektion.errors import (
     ConnectivityError,
     FormatError,

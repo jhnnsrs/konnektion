@@ -154,7 +154,9 @@ def strahler_orders(network: Network) -> npt.NDArray[np.int64]:
 # --------------------------------------------------------------------------- #
 
 
-def subset(network: Network, keep: npt.NDArray[np.bool_]) -> tuple[Network, npt.NDArray[np.int64]]:
+def subset(
+    network: Network, keep: npt.NDArray[np.bool_]
+) -> tuple[Network, npt.NDArray[np.int64]]:
     """The sub-network induced by a node mask, plus the old-index-per-new-index map.
 
     An edge survives when **both** its endpoints do. That is the only sane rule and it is worth
@@ -284,7 +286,9 @@ def unbranched_runs(network: Network) -> list[list[int]]:
     return runs
 
 
-def douglas_peucker(points: npt.NDArray[np.float64], epsilon: float) -> npt.NDArray[np.bool_]:
+def douglas_peucker(
+    points: npt.NDArray[np.float64], epsilon: float
+) -> npt.NDArray[np.bool_]:
     """Which points of a polyline survive simplification at ``epsilon`` voxels.
 
     The classic recursive split, iterative here for the same depth reason as
@@ -330,9 +334,7 @@ def douglas_peucker(points: npt.NDArray[np.float64], epsilon: float) -> npt.NDAr
     return keep
 
 
-def simplify(
-    network: Network, epsilon: float
-) -> tuple[Network, npt.NDArray[np.int64]]:
+def simplify(network: Network, epsilon: float) -> tuple[Network, npt.NDArray[np.int64]]:
     """Straighten every unbranched run, keeping branch points and terminals.
 
     Topology-preserving by construction: only interior nodes of a degree-2 chain are ever
@@ -375,7 +377,12 @@ def simplify(
         survivors = [node for node in run if keep[node]]
         for a, b in pairwise(survivors):
             if a != b:
-                rebuilt.add((min(int(remap[a]), int(remap[b])), max(int(remap[a]), int(remap[b]))))
+                rebuilt.add(
+                    (
+                        min(int(remap[a]), int(remap[b])),
+                        max(int(remap[a]), int(remap[b])),
+                    )
+                )
 
     # Anything the run walk did not cover -- it should cover every edge, and this is the guard
     # that says so rather than assuming it. Such an edge survives on the induced-subgraph rule.
@@ -383,7 +390,9 @@ def simplify(
         if (min(a, b), max(a, b)) in covered or a == b:
             continue
         if keep[a] and keep[b]:
-            rebuilt.add((min(int(remap[a]), int(remap[b])), max(int(remap[a]), int(remap[b]))))
+            rebuilt.add(
+                (min(int(remap[a]), int(remap[b])), max(int(remap[a]), int(remap[b])))
+            )
 
     edges = (
         np.array(sorted(rebuilt), dtype=np.int64).reshape(-1, 2)

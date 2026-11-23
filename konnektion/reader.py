@@ -73,7 +73,10 @@ class CellEntry:
         ):
             if self.child_mask & (1 << bit):
                 found.append(
-                    (self.level - 1, morton_encode_one((2 * i + di, 2 * j + dj, 2 * k + dk)))
+                    (
+                        self.level - 1,
+                        morton_encode_one((2 * i + di, 2 * j + dj, 2 * k + dk)),
+                    )
                 )
         return found
 
@@ -180,7 +183,9 @@ class Collection:
         key = (level, part)
         if key not in self._parts:
             path = level_part_path(level, part)
-            self._parts[key] = parquet_to_table(get_bytes(self.store, join(self.prefix, path)))
+            self._parts[key] = parquet_to_table(
+                get_bytes(self.store, join(self.prefix, path))
+            )
         return self._parts[key]
 
     def read_cell(self, level: int, cell: int) -> DecodedCell:
@@ -219,35 +224,60 @@ class Collection:
         edge_count = int(get("edge_count"))
 
         owned = decode_positions(
-            get("positions"), cell=cell, level=level, cell_size=cell_size,
-            codec=encoding.codec, compression=encoding.compression, node_count=node_count,
+            get("positions"),
+            cell=cell,
+            level=level,
+            cell_size=cell_size,
+            codec=encoding.codec,
+            compression=encoding.compression,
+            node_count=node_count,
         )
         ghost_cells = decode_ghost_cells(
-            get("ghost_cells"), codec=encoding.codec, compression=encoding.compression,
+            get("ghost_cells"),
+            codec=encoding.codec,
+            compression=encoding.compression,
             ghost_count=ghost_count,
         )
         ghosts = decode_ghost_positions(
-            get("ghost_positions"), ghost_cells, level=level, cell_size=cell_size,
-            codec=encoding.codec, compression=encoding.compression, ghost_count=ghost_count,
+            get("ghost_positions"),
+            ghost_cells,
+            level=level,
+            cell_size=cell_size,
+            codec=encoding.codec,
+            compression=encoding.compression,
+            ghost_count=ghost_count,
         )
         owned_ids = decode_node_ids(
-            get("node_ids"), declaration=encoding.node_ids, codec=encoding.codec,
-            compression=encoding.compression, node_count=node_count,
+            get("node_ids"),
+            declaration=encoding.node_ids,
+            codec=encoding.codec,
+            compression=encoding.compression,
+            node_count=node_count,
         )
         ghost_ids = decode_node_ids(
-            get("ghost_ids"), declaration=encoding.node_ids, codec=encoding.codec,
-            compression=encoding.compression, node_count=ghost_count,
+            get("ghost_ids"),
+            declaration=encoding.node_ids,
+            codec=encoding.codec,
+            compression=encoding.compression,
+            node_count=ghost_count,
         )
         edges = decode_edges(
-            get("edges"), codec=encoding.codec, compression=encoding.compression,
+            get("edges"),
+            codec=encoding.codec,
+            compression=encoding.compression,
             edge_count=edge_count,
         )
 
         radii = None
         if encoding.has_radii:
             owned_radii = decode_radii(
-                get("radii"), declaration=encoding.radii, cell=cell, level=level,
-                cell_size=cell_size, codec=encoding.codec, compression=encoding.compression,
+                get("radii"),
+                declaration=encoding.radii,
+                cell=cell,
+                level=level,
+                cell_size=cell_size,
+                codec=encoding.codec,
+                compression=encoding.compression,
                 node_count=node_count,
             )
             ghost_radii = _decode_ghost_radii(
@@ -273,22 +303,32 @@ class Collection:
                     f"{cell} holds no blob for it."
                 )
             owned_values = decode_attribute_values(
-                owned_blob, declaration=declared.encoding, codec=encoding.codec,
-                compression=encoding.compression, count=node_count,
+                owned_blob,
+                declaration=declared.encoding,
+                codec=encoding.codec,
+                compression=encoding.compression,
+                count=node_count,
             )
             ghost_values = decode_attribute_values(
-                ghost_blob, declaration=declared.encoding, codec=encoding.codec,
-                compression=encoding.compression, count=ghost_count,
+                ghost_blob,
+                declaration=declared.encoding,
+                codec=encoding.codec,
+                compression=encoding.compression,
+                count=ghost_count,
             )
             attributes[declared.name] = (
-                np.concatenate([owned_values, ghost_values]) if ghost_count else owned_values
+                np.concatenate([owned_values, ghost_values])
+                if ghost_count
+                else owned_values
             )
 
         return DecodedCell(
             level=level,
             cell=cell,
             positions=np.concatenate([owned, ghosts]) if ghost_count else owned,
-            node_ids=np.concatenate([owned_ids, ghost_ids]) if ghost_count else owned_ids,
+            node_ids=np.concatenate([owned_ids, ghost_ids])
+            if ghost_count
+            else owned_ids,
             edges=edges,
             ghost_cells=ghost_cells,
             radii=radii,
@@ -303,7 +343,9 @@ class Collection:
 
     def iter_cells(self, level: int) -> Iterator[DecodedCell]:
         """Every decoded cell of one level, without going through the catalog per cell."""
-        parts = sorted({entry.part for entry in self.cells_at(level) if entry.part is not None})
+        parts = sorted(
+            {entry.part for entry in self.cells_at(level) if entry.part is not None}
+        )
         for part in parts:
             table = self._part_table(level, part)
             for row in range(table.num_rows):
@@ -316,8 +358,12 @@ class Collection:
         the one place an undeclared ``attr_*`` -- or a declared one that never landed -- shows
         up without decoding anything.
         """
-        parts = sorted({entry.part for entry in self.cells_at(level) if entry.part is not None})
-        return {part: tuple(self._part_table(level, part).column_names) for part in parts}
+        parts = sorted(
+            {entry.part for entry in self.cells_at(level) if entry.part is not None}
+        )
+        return {
+            part: tuple(self._part_table(level, part).column_names) for part in parts
+        }
 
 
 def _decode_ghost_radii(
@@ -335,8 +381,14 @@ def _decode_ghost_radii(
         return np.zeros(0, dtype=np.float64)
     if encoding.radii == RADII_FLOAT32:
         return decode_radii(
-            blob, declaration=encoding.radii, cell=0, level=level, cell_size=cell_size,
-            codec=encoding.codec, compression=encoding.compression, node_count=ghost_count,
+            blob,
+            declaration=encoding.radii,
+            cell=0,
+            level=level,
+            cell_size=cell_size,
+            codec=encoding.codec,
+            compression=encoding.compression,
+            node_count=ghost_count,
         )
     from konnektion.codecs.compression import decompress
 
@@ -344,9 +396,13 @@ def _decode_ghost_radii(
     values = np.zeros(ghost_count, dtype=np.float64)
     for index in range(ghost_count):
         values[index] = decode_radii(
-            body[2 * index : 2 * index + 2], declaration=encoding.radii,
-            cell=int(owners[index]), level=level, cell_size=cell_size,
-            codec=encoding.codec, node_count=1,
+            body[2 * index : 2 * index + 2],
+            declaration=encoding.radii,
+            cell=int(owners[index]),
+            level=level,
+            cell_size=cell_size,
+            codec=encoding.codec,
+            node_count=1,
         )[0]
     return values
 
@@ -354,8 +410,12 @@ def _decode_ghost_radii(
 def _bounds(row: Mapping[str, Any]) -> tuple[float, float, float, float, float, float]:
     """The six bbox columns of a catalog row, in a fixed order."""
     return (
-        float(row["bbox_min_x"]), float(row["bbox_min_y"]), float(row["bbox_min_z"]),
-        float(row["bbox_max_x"]), float(row["bbox_max_y"]), float(row["bbox_max_z"]),
+        float(row["bbox_min_x"]),
+        float(row["bbox_min_y"]),
+        float(row["bbox_min_z"]),
+        float(row["bbox_max_x"]),
+        float(row["bbox_max_y"]),
+        float(row["bbox_max_z"]),
     )
 
 
@@ -378,7 +438,9 @@ def open_collection(store: KonnektionStore, prefix: str = "") -> Collection:
 
     manifest = Manifest.from_json(body)
     cells_table = parquet_to_table(get_bytes(store, join(prefix, CELL_CATALOG_PATH)))
-    objects_table = parquet_to_table(get_bytes(store, join(prefix, OBJECT_CATALOG_PATH)))
+    objects_table = parquet_to_table(
+        get_bytes(store, join(prefix, OBJECT_CATALOG_PATH))
+    )
 
     cells: dict[tuple[int, int], CellEntry] = {}
     for row in cells_table.to_pylist():
@@ -403,7 +465,9 @@ def open_collection(store: KonnektionStore, prefix: str = "") -> Collection:
         entry_object = ObjectEntry(
             object_id=int(row["object_id"]),
             ordinal=int(row["ordinal"]),
-            root_node_id=None if row["root_node_id"] is None else int(row["root_node_id"]),
+            root_node_id=None
+            if row["root_node_id"] is None
+            else int(row["root_node_id"]),
             component_count=int(row["component_count"]),
             bounds=_bounds(row),
             node_count=int(row["node_count"]),

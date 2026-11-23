@@ -40,8 +40,15 @@ def test_the_encoding_is_written_complete():
     """Never sparse: a reader configures its decoder from what it reads back."""
     written = a_manifest().to_dict()["encoding"]
     assert set(written) == {
-        "positions", "edges", "nodeIds", "radii", "ghosts",
-        "codec", "compression", "pruning", "simplification",
+        "positions",
+        "edges",
+        "nodeIds",
+        "radii",
+        "ghosts",
+        "codec",
+        "compression",
+        "pruning",
+        "simplification",
     }
 
 
@@ -74,7 +81,9 @@ def test_a_value_outside_the_vocabulary_is_refused():
 
 def test_shape_and_axes_are_written_even_when_null():
     """So a reader can tell 'considered and unanswerable' from 'predates the question'."""
-    raw = json.loads(Manifest(grid=Grid((64, 64, 64), 1), encoding=Encoding()).to_json())
+    raw = json.loads(
+        Manifest(grid=Grid((64, 64, 64), 1), encoding=Encoding()).to_json()
+    )
     assert raw["shape"] is None and raw["axes"] is None
     assert "shape" in raw and "axes" in raw
 
@@ -88,7 +97,9 @@ def test_a_coarsening_that_prunes_nothing_must_say_so():
 def test_a_coarsening_that_moves_nothing_must_say_so():
     """Same rule, the other operation: an epsilon of zero straightens nothing."""
     with pytest.raises(FormatError, match="epsilon"):
-        Coarsening(strahler_step=1, epsilon=0.0, simplification=SIMPLIFICATION_DOUGLAS_PEUCKER)
+        Coarsening(
+            strahler_step=1, epsilon=0.0, simplification=SIMPLIFICATION_DOUGLAS_PEUCKER
+        )
 
 
 def test_the_empty_coarsening_declares_none_of_both():

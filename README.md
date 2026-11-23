@@ -11,8 +11,8 @@ skeletons, connectomes, tracking graphs with divisions.
 import konnektion
 
 collection = konnektion.build_collection(
-    {1: (nodes, edges)},          # (n, 3) voxel positions, (m, 2) endpoint indices
-    cell_size=(128, 128, 32),     # the source array's chunk shape, (x, y, z)
+    {1: (nodes, edges)},  # (n, 3) voxel positions, (m, 2) endpoint indices
+    cell_size=(128, 128, 32),  # the source array's chunk shape, (x, y, z)
     axes=("x", "y", "z"),
 )
 store = konnektion.MemoryStore()

@@ -67,7 +67,9 @@ class AsyncReadable(Protocol):
         """Read a whole object."""
         ...
 
-    async def get_range_async(self, path: str, *, start: int, length: int | None = None) -> Any:  # noqa: ANN401
+    async def get_range_async(
+        self, path: str, *, start: int, length: int | None = None
+    ) -> Any:  # noqa: ANN401
         """Read one window of an object."""
         ...
 
@@ -86,9 +88,13 @@ def join(*parts: str) -> str:
 def validate_relative(path: str) -> str:
     """Refuse a path that leaves the collection's own tree."""
     if path.startswith("/"):
-        raise FormatError(f"A collection names files inside its own tree, so {path!r} cannot be absolute.")
+        raise FormatError(
+            f"A collection names files inside its own tree, so {path!r} cannot be absolute."
+        )
     if any(segment == ".." for segment in path.split("/")):
-        raise FormatError(f"A collection names files inside its own tree, so {path!r} cannot escape it with '..'.")
+        raise FormatError(
+            f"A collection names files inside its own tree, so {path!r} cannot escape it with '..'."
+        )
     return path
 
 

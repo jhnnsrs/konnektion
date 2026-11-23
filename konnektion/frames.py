@@ -34,24 +34,56 @@ ParquetCompression = Literal["none", "snappy", "gzip", "brotli", "lz4", "zstd"]
 #: believe them. The manifest says whether to look for it.
 REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
     "cell_catalog": (
-        "level", "cell", "node_count", "edge_count", "ghost_count",
-        "bbox_min_x", "bbox_min_y", "bbox_min_z",
-        "bbox_max_x", "bbox_max_y", "bbox_max_z",
-        "lod_error", "object_count", "child_mask",
-        "part", "row_group", "blob_bytes",
+        "level",
+        "cell",
+        "node_count",
+        "edge_count",
+        "ghost_count",
+        "bbox_min_x",
+        "bbox_min_y",
+        "bbox_min_z",
+        "bbox_max_x",
+        "bbox_max_y",
+        "bbox_max_z",
+        "lod_error",
+        "object_count",
+        "child_mask",
+        "part",
+        "row_group",
+        "blob_bytes",
     ),
     "object_catalog": (
-        "object_id", "ordinal", "root_node_id", "component_count",
-        "bbox_min_x", "bbox_min_y", "bbox_min_z",
-        "bbox_max_x", "bbox_max_y", "bbox_max_z",
-        "node_count", "edge_count", "cells",
+        "object_id",
+        "ordinal",
+        "root_node_id",
+        "component_count",
+        "bbox_min_x",
+        "bbox_min_y",
+        "bbox_min_z",
+        "bbox_max_x",
+        "bbox_max_y",
+        "bbox_max_z",
+        "node_count",
+        "edge_count",
+        "cells",
     ),
     "geometry": (
-        "level", "cell", "positions", "node_ids", "edges",
-        "ghost_positions", "ghost_cells", "ghost_ids",
-        "node_count", "edge_count", "ghost_count",
-        "object_ids", "object_ordinals",
-        "object_node_offsets", "object_ghost_offsets", "object_edge_offsets",
+        "level",
+        "cell",
+        "positions",
+        "node_ids",
+        "edges",
+        "ghost_positions",
+        "ghost_cells",
+        "ghost_ids",
+        "node_count",
+        "edge_count",
+        "ghost_count",
+        "object_ids",
+        "object_ordinals",
+        "object_node_offsets",
+        "object_ghost_offsets",
+        "object_edge_offsets",
     ),
 }
 
@@ -80,89 +112,99 @@ def arrow_schemas(attribute_names: Sequence[str] = ()) -> dict[str, pa.Schema]:
         for axis in ("x", "y", "z")
     ]
     return {
-        "cell_catalog": pa.schema([
-            pa.field("level", pa.int32()),
-            pa.field("cell", pa.int64()),
-            pa.field("node_count", pa.int32()),
-            pa.field("edge_count", pa.int32()),
-            # Ghosts are counted separately from nodes because they are not data: they are
-            # copies, and a client summing node_count across cells would otherwise double-count
-            # every endpoint of every edge that crosses a cell plane.
-            pa.field("ghost_count", pa.int32()),
-            *bbox,
-            pa.field("lod_error", pa.float64()),
-            pa.field("object_count", pa.int32()),
-            pa.field("child_mask", pa.uint8()),
-            # The locator: which part of the level holds this cell, and which row group of it.
-            # Null on a built-but-unwritten collection -- part assignment and row-group
-            # boundaries are the writer's decisions and are not known until it makes them.
-            pa.field("part", pa.int32(), nullable=True),
-            pa.field("row_group", pa.int32(), nullable=True),
-            pa.field("blob_bytes", pa.int64()),
-        ]),
-        "object_catalog": pa.schema([
-            pa.field("object_id", pa.int64()),
-            pa.field("ordinal", pa.int32()),
-            # The node the ancestor-closed invariant is stated relative to. Null for an object
-            # with no distinguished root -- a connectome component rather than a rooted tree --
-            # in which case connectivity is checked per component instead.
-            pa.field("root_node_id", pa.int64(), nullable=True),
-            # How many connected pieces this object is in. Declared so that connectivity is
-            # *falsifiable at every level, including level 0* -- without it the only checkable
-            # statement is "no coarser than the level below", which says nothing at all about a
-            # collection that has one level, and one level is the common case.
-            pa.field("component_count", pa.int32()),
-            *bbox,
-            pa.field("node_count", pa.int32()),
-            pa.field("edge_count", pa.int32()),
-            pa.field("cells", pa.list_(pa.int64())),
-        ]),
-        "geometry": pa.schema([
-            pa.field("level", pa.int32()),
-            pa.field("cell", pa.int64()),
-            pa.field("positions", pa.large_binary()),
-            pa.field("node_ids", pa.large_binary()),
-            pa.field("edges", pa.large_binary()),
-            # The endpoints this cell does not own, quantized against the cell that does --
-            # which `ghost_cells` names, one Morton code per ghost. They are the tail of the
-            # node array, so an edge index past `node_count` addresses one of them.
-            pa.field("ghost_positions", pa.large_binary()),
-            pa.field("ghost_cells", pa.large_binary()),
-            pa.field("ghost_ids", pa.large_binary()),
-            # Optional, and present exactly when `encoding.radii` is not NONE.
-            pa.field("radii", pa.large_binary(), nullable=True),
-            pa.field("ghost_radii", pa.large_binary(), nullable=True),
-            pa.field("node_count", pa.int32()),
-            pa.field("edge_count", pa.int32()),
-            pa.field("ghost_count", pa.int32()),
-            pa.field("object_ids", pa.list_(pa.int64())),
-            pa.field("object_ordinals", pa.list_(pa.int32())),
-            pa.field("object_node_offsets", pa.list_(pa.int32())),
-            # Ghosts are concatenated after every object's owned nodes, so they need their own
-            # offsets: without them a ghost cannot be attributed to an object, and a verifier
-            # matching a ghost to the node it copies has only its id to go on -- which is unique
-            # within an object and need not be across a collection.
-            pa.field("object_ghost_offsets", pa.list_(pa.int32())),
-            pa.field("object_edge_offsets", pa.list_(pa.int32())),
-            # One blob pair per attribute the manifest declares: owned values in node order,
-            # ghost values in ghost order, exactly the radii layout.
-            *(
-                field
-                for name in attribute_names
-                for field in (
-                    pa.field(attribute_column(name), pa.large_binary(), nullable=True),
-                    pa.field(ghost_attribute_column(name), pa.large_binary(), nullable=True),
-                )
-            ),
-        ]),
+        "cell_catalog": pa.schema(
+            [
+                pa.field("level", pa.int32()),
+                pa.field("cell", pa.int64()),
+                pa.field("node_count", pa.int32()),
+                pa.field("edge_count", pa.int32()),
+                # Ghosts are counted separately from nodes because they are not data: they are
+                # copies, and a client summing node_count across cells would otherwise double-count
+                # every endpoint of every edge that crosses a cell plane.
+                pa.field("ghost_count", pa.int32()),
+                *bbox,
+                pa.field("lod_error", pa.float64()),
+                pa.field("object_count", pa.int32()),
+                pa.field("child_mask", pa.uint8()),
+                # The locator: which part of the level holds this cell, and which row group of it.
+                # Null on a built-but-unwritten collection -- part assignment and row-group
+                # boundaries are the writer's decisions and are not known until it makes them.
+                pa.field("part", pa.int32(), nullable=True),
+                pa.field("row_group", pa.int32(), nullable=True),
+                pa.field("blob_bytes", pa.int64()),
+            ]
+        ),
+        "object_catalog": pa.schema(
+            [
+                pa.field("object_id", pa.int64()),
+                pa.field("ordinal", pa.int32()),
+                # The node the ancestor-closed invariant is stated relative to. Null for an object
+                # with no distinguished root -- a connectome component rather than a rooted tree --
+                # in which case connectivity is checked per component instead.
+                pa.field("root_node_id", pa.int64(), nullable=True),
+                # How many connected pieces this object is in. Declared so that connectivity is
+                # *falsifiable at every level, including level 0* -- without it the only checkable
+                # statement is "no coarser than the level below", which says nothing at all about a
+                # collection that has one level, and one level is the common case.
+                pa.field("component_count", pa.int32()),
+                *bbox,
+                pa.field("node_count", pa.int32()),
+                pa.field("edge_count", pa.int32()),
+                pa.field("cells", pa.list_(pa.int64())),
+            ]
+        ),
+        "geometry": pa.schema(
+            [
+                pa.field("level", pa.int32()),
+                pa.field("cell", pa.int64()),
+                pa.field("positions", pa.large_binary()),
+                pa.field("node_ids", pa.large_binary()),
+                pa.field("edges", pa.large_binary()),
+                # The endpoints this cell does not own, quantized against the cell that does --
+                # which `ghost_cells` names, one Morton code per ghost. They are the tail of the
+                # node array, so an edge index past `node_count` addresses one of them.
+                pa.field("ghost_positions", pa.large_binary()),
+                pa.field("ghost_cells", pa.large_binary()),
+                pa.field("ghost_ids", pa.large_binary()),
+                # Optional, and present exactly when `encoding.radii` is not NONE.
+                pa.field("radii", pa.large_binary(), nullable=True),
+                pa.field("ghost_radii", pa.large_binary(), nullable=True),
+                pa.field("node_count", pa.int32()),
+                pa.field("edge_count", pa.int32()),
+                pa.field("ghost_count", pa.int32()),
+                pa.field("object_ids", pa.list_(pa.int64())),
+                pa.field("object_ordinals", pa.list_(pa.int32())),
+                pa.field("object_node_offsets", pa.list_(pa.int32())),
+                # Ghosts are concatenated after every object's owned nodes, so they need their own
+                # offsets: without them a ghost cannot be attributed to an object, and a verifier
+                # matching a ghost to the node it copies has only its id to go on -- which is unique
+                # within an object and need not be across a collection.
+                pa.field("object_ghost_offsets", pa.list_(pa.int32())),
+                pa.field("object_edge_offsets", pa.list_(pa.int32())),
+                # One blob pair per attribute the manifest declares: owned values in node order,
+                # ghost values in ghost order, exactly the radii layout.
+                *(
+                    field
+                    for name in attribute_names
+                    for field in (
+                        pa.field(
+                            attribute_column(name), pa.large_binary(), nullable=True
+                        ),
+                        pa.field(
+                            ghost_attribute_column(name),
+                            pa.large_binary(),
+                            nullable=True,
+                        ),
+                    )
+                ),
+            ]
+        ),
     }
 
 
 def build_table(rows: Sequence[Mapping[str, Any]], schema: pa.Schema) -> pa.Table:
     """Build an Arrow table from row dicts under a fixed schema, empty rows included."""
-    columns = {
-        field.name: [row.get(field.name) for row in rows] for field in schema
-    }
+    columns = {field.name: [row.get(field.name) for row in rows] for field in schema}
     return pa.table(columns, schema=schema)
 
 
@@ -177,7 +219,9 @@ def _column_names(table: Any) -> Iterable[str]:  # noqa: ANN401
     columns = getattr(table, "columns", None)
     if columns is not None:
         return [str(column) for column in columns]
-    raise FormatError(f"konnektion cannot read column names off a {type(table).__name__}.")
+    raise FormatError(
+        f"konnektion cannot read column names off a {type(table).__name__}."
+    )
 
 
 def validate_columns(table: pa.Table, role: str) -> None:
@@ -204,7 +248,9 @@ def validate_columns(table: pa.Table, role: str) -> None:
         )
 
 
-def table_to_parquet(table: pa.Table, *, compression: ParquetCompression = "zstd") -> bytes:
+def table_to_parquet(
+    table: pa.Table, *, compression: ParquetCompression = "zstd"
+) -> bytes:
     """Serialize an Arrow table to Parquet bytes.
 
     The Parquet-level compression is the *file's*, and is a separate thing from the format's:
@@ -243,7 +289,14 @@ def blob_sizes(table: pa.Table) -> list[int]:
     not at all in rows.
     """
     names = set(table.column_names)
-    columns = ["positions", "node_ids", "edges", "ghost_positions", "ghost_cells", "ghost_ids"]
+    columns = [
+        "positions",
+        "node_ids",
+        "edges",
+        "ghost_positions",
+        "ghost_cells",
+        "ghost_ids",
+    ]
     columns += [name for name in ("radii", "ghost_radii") if name in names]
     columns += sorted(
         name for name in names if name.startswith(("attr_", "ghost_attr_"))

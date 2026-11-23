@@ -14,7 +14,15 @@ from tests.conftest import arbor, chain
 def perfect_tree() -> Network:
     """A depth-2 binary tree whose Strahler orders are known by hand: [3, 2, 2, 1, 1, 1, 1]."""
     nodes = np.array(
-        [[0, 0, 0], [1, 1, 0], [1, -1, 0], [2, 2, 0], [2, 0.5, 0], [2, -0.5, 0], [2, -2, 0]],
+        [
+            [0, 0, 0],
+            [1, 1, 0],
+            [1, -1, 0],
+            [2, 2, 0],
+            [2, 0.5, 0],
+            [2, -0.5, 0],
+            [2, -2, 0],
+        ],
         dtype=float,
     )
     edges = np.array([[0, 1], [0, 2], [1, 3], [1, 4], [2, 5], [2, 6]])
@@ -28,11 +36,15 @@ def test_strahler_matches_the_hand_computed_orders():
 
 def test_strahler_rises_only_where_equal_branches_meet():
     """One child of order 2 and one of order 1 leaves the parent at 2, not 3."""
-    nodes = np.array([[0, 0, 0], [1, 0, 0], [2, 1, 0], [2, -1, 0], [1, 5, 0]], dtype=float)
+    nodes = np.array(
+        [[0, 0, 0], [1, 0, 0], [2, 1, 0], [2, -1, 0], [1, 5, 0]], dtype=float
+    )
     edges = np.array([[0, 1], [1, 2], [1, 3], [0, 4]])
     orders = g.strahler_orders(Network(nodes=nodes, edges=edges, root=0))
     assert orders[1] == 2, "two order-1 children tie, so this rises"
-    assert orders[0] == 2, "an order-2 and an order-1 child do not tie, so this does not"
+    assert orders[0] == 2, (
+        "an order-2 and an order-1 child do not tie, so this does not"
+    )
 
 
 def test_strahler_is_non_decreasing_toward_the_root():
@@ -65,7 +77,9 @@ def test_pruning_is_ancestor_closed():
         while parent[step] >= 0:
             step = int(parent[step])
             walked += 1
-            assert step in survived, f"node {node} survived but its ancestor {step} did not"
+            assert step in survived, (
+                f"node {node} survived but its ancestor {step} did not"
+            )
     assert walked > 100, "the walk has to actually traverse something"
 
 

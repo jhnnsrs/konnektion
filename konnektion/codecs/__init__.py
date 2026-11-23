@@ -111,7 +111,11 @@ from konnektion.codecs.blobs import (
     encode_radii,
     node_id_dtype,
 )
-from konnektion.codecs.compression import compress, decompress, require_known_compression
+from konnektion.codecs.compression import (
+    compress,
+    decompress,
+    require_known_compression,
+)
 from konnektion.codecs.protocol import BlobCodec
 from konnektion.codecs.raw import RawCodec
 

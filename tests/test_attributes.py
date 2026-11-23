@@ -56,7 +56,9 @@ def test_intrinsic_values_on_a_known_tree():
         edges=np.array([[0, 1], [1, 2], [1, 3]], dtype=np.int64),
         root=0,
     )
-    built = konnektion.build_collection({7: tree}, cell_size=(16, 16, 16), axes=("x", "y", "z"))
+    built = konnektion.build_collection(
+        {7: tree}, cell_size=(16, 16, 16), axes=("x", "y", "z")
+    )
     store = konnektion.MemoryStore()
     built.write(store, "p")
     opened = konnektion.open_collection(store, "p")
@@ -73,7 +75,9 @@ def test_intrinsic_values_on_a_known_tree():
 
 def test_rootless_strahler_and_depth_are_nan():
     """An object with no distinguished root has no 'up', and the format says so with NaN."""
-    built = konnektion.build_collection({1: chain(5)}, cell_size=(64, 64, 64), axes=("x", "y", "z"))
+    built = konnektion.build_collection(
+        {1: chain(5)}, cell_size=(64, 64, 64), axes=("x", "y", "z")
+    )
     store = konnektion.MemoryStore()
     built.write(store, "p")
     opened = konnektion.open_collection(store, "p")
@@ -94,10 +98,15 @@ def test_user_attributes_round_trip():
     tree = arbor(depth=3)
     tortuosity = np.linspace(0.0, 2.0, tree.node_count)
     network = Network(
-        nodes=tree.nodes, edges=tree.edges, radii=tree.radii, root=tree.root,
+        nodes=tree.nodes,
+        edges=tree.edges,
+        radii=tree.radii,
+        root=tree.root,
         attributes={"tortuosity": tortuosity},
     )
-    built = konnektion.build_collection({4: network}, cell_size=(128, 128, 128), axes=("x", "y", "z"))
+    built = konnektion.build_collection(
+        {4: network}, cell_size=(128, 128, 128), axes=("x", "y", "z")
+    )
     declared = {attribute.name: attribute for attribute in built.manifest().attributes}
     assert declared["tortuosity"].semantics is None
 
@@ -105,7 +114,9 @@ def test_user_attributes_round_trip():
     built.write(store, "p")
     opened = konnektion.open_collection(store, "p")
     found = value_map(list(opened.iter_cells(0)), "tortuosity")
-    expected = {int(node_id): tortuosity[index] for index, node_id in enumerate(network.ids())}
+    expected = {
+        int(node_id): tortuosity[index] for index, node_id in enumerate(network.ids())
+    }
     assert len(found) == tree.node_count
     for (_, node_id), value in found.items():
         assert value == pytest.approx(expected[node_id], rel=1e-6)
@@ -118,7 +129,9 @@ def test_a_missing_user_attribute_is_nan_filled():
     built = konnektion.build_collection(
         {
             1: Network(
-                nodes=with_it.nodes, edges=with_it.edges, root=with_it.root,
+                nodes=with_it.nodes,
+                edges=with_it.edges,
+                root=with_it.root,
                 attributes={"tortuosity": np.ones(with_it.node_count)},
             ),
             2: without_it,
@@ -138,11 +151,14 @@ def test_an_intrinsic_name_collision_is_refused():
     """A caller column named like a computed metric would forge the manifest's semantics."""
     tree = chain(4)
     network = Network(
-        nodes=tree.nodes, edges=tree.edges,
+        nodes=tree.nodes,
+        edges=tree.edges,
         attributes={"degree": np.zeros(tree.node_count)},
     )
     with pytest.raises(konnektion.FormatError, match="collide"):
-        konnektion.build_collection({1: network}, cell_size=(64, 64, 64), axes=("x", "y", "z"))
+        konnektion.build_collection(
+            {1: network}, cell_size=(64, 64, 64), axes=("x", "y", "z")
+        )
 
 
 @pytest.mark.parametrize(
@@ -237,7 +253,9 @@ def test_ghost_values_are_the_owners_values(opened: konnektion.Collection):
 
 def test_coarse_levels_carry_level_zero_values(opened_ladder: konnektion.Collection):
     """A node kept at a coarse level keeps its level-0 value: subset, never recomputed."""
-    assert opened_ladder.grid.levels > 1, "the ladder fixture must be deep enough to test this"
+    assert opened_ladder.grid.levels > 1, (
+        "the ladder fixture must be deep enough to test this"
+    )
     for name in INTRINSIC_NAMES:
         baseline = value_map(list(opened_ladder.iter_cells(0)), name)
         for level in range(1, opened_ladder.grid.levels):
@@ -273,11 +291,15 @@ def test_an_undeclared_attribute_column_is_caught(written: konnektion.MemoryStor
     table = parquet_to_table(written.objects[path])
     stray = pa.array([b""] * table.num_rows, type=pa.large_binary())
     written.objects[path] = _reserialize(
-        table.append_column(pa.field("attr_stray", pa.large_binary(), nullable=True), stray)
+        table.append_column(
+            pa.field("attr_stray", pa.large_binary(), nullable=True), stray
+        )
     )
     report = konnektion.verify(konnektion.open_collection(written, "p"), tier="blobs")
     failed = {check.name for check in report.failures}
-    assert "attribute columns are exactly what the manifest declares" in failed, str(report)
+    assert "attribute columns are exactly what the manifest declares" in failed, str(
+        report
+    )
 
 
 def test_a_recomputed_metric_is_caught(opened_ladder: konnektion.Collection):
@@ -295,13 +317,16 @@ def test_a_recomputed_metric_is_caught(opened_ladder: konnektion.Collection):
     column[0] = np.full(counts[0], 99.0, dtype="<f4").tobytes()
     index = table.schema.get_field_index(attribute_column("degree"))
     tampered = table.set_column(
-        index, table.schema.field(attribute_column("degree")),
+        index,
+        table.schema.field(attribute_column("degree")),
         pa.array(column, type=pa.large_binary()),
     )
     store.objects[path] = _reserialize(tampered)
     report = konnektion.verify(konnektion.open_collection(store, "q"), tier="topology")
     failed = {check.name for check in report.failures}
-    assert "a kept node's attribute values are the level-0 values" in failed, str(report)
+    assert "a kept node's attribute values are the level-0 values" in failed, str(
+        report
+    )
 
 
 def _reserialize(table) -> bytes:

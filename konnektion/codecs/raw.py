@@ -33,10 +33,13 @@ class RawCodec:
         """Name the manifest value this implements."""
         return f"RawCodec({self.name!r})"
 
-    def encode_positions(self, quantized: npt.NDArray[np.uint16], *, compression: str) -> bytes:
+    def encode_positions(
+        self, quantized: npt.NDArray[np.uint16], *, compression: str
+    ) -> bytes:
         """Interleave the ``uint16`` triples and hand back the bytes."""
         return compress(
-            np.ascontiguousarray(quantized, dtype="<u2").reshape(-1).tobytes(), compression
+            np.ascontiguousarray(quantized, dtype="<u2").reshape(-1).tobytes(),
+            compression,
         )
 
     def decode_positions(

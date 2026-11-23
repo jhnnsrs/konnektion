@@ -42,9 +42,13 @@ def test_a_ladder_verifies_including_the_cross_level_checks(opened_ladder):
 def test_the_cross_level_checks_are_not_vacuous(opened_ladder):
     """They have to compare a real number of things, or they prove nothing."""
     report = konnektion.verify(opened_ladder, tier="topology")
-    subset = next(c for c in report.checks if c.name.startswith("a coarse level is a subset"))
+    subset = next(
+        c for c in report.checks if c.name.startswith("a coarse level is a subset")
+    )
     assert int(subset.detail.split()[0]) > 100, subset.detail
-    ghosts = next(c for c in report.checks if c.name.startswith("every ghost is a copy"))
+    ghosts = next(
+        c for c in report.checks if c.name.startswith("every ghost is a copy")
+    )
     assert int(ghosts.detail.split()[0]) > 100, ghosts.detail
 
 
@@ -78,7 +82,9 @@ def test_an_unknown_tier_is_refused(opened):
 def test_a_missing_part_is_caught(written):
     """Delete a level's geometry; the manifest still names it."""
     del written.objects["p/level0/part-00000.parquet"]
-    report = konnektion.verify(konnektion.open_collection(written, "p"), tier="structure")
+    report = konnektion.verify(
+        konnektion.open_collection(written, "p"), tier="structure"
+    )
     assert "every file the manifest names is present" in names(report)
 
 
@@ -100,7 +106,9 @@ def test_a_cell_without_a_locator_is_caught(written):
         pa.array([None] * table.num_rows, type=pa.int32()),
     )
     put_bytes(written, join("p", CELL_CATALOG_PATH), table_to_parquet(blanked))
-    report = konnektion.verify(konnektion.open_collection(written, "p"), tier="structure")
+    report = konnektion.verify(
+        konnektion.open_collection(written, "p"), tier="structure"
+    )
     assert "every cell names the part and row group holding it" in names(report)
 
 
@@ -111,8 +119,12 @@ def test_a_moved_ghost_is_caught(written):
     symptom is an edge reaching slightly the wrong way. Nothing but this check sees it.
     """
     _corrupt_ghost_positions(written)
-    report = konnektion.verify(konnektion.open_collection(written, "p"), tier="topology")
-    assert "every ghost is a copy of a node some cell owns" in names(report), str(report)
+    report = konnektion.verify(
+        konnektion.open_collection(written, "p"), tier="topology"
+    )
+    assert "every ghost is a copy of a node some cell owns" in names(report), str(
+        report
+    )
 
 
 def test_a_severed_edge_breaks_connectivity_and_is_caught(written):
@@ -122,8 +134,12 @@ def test_a_severed_edge_breaks_connectivity_and_is_caught(written):
     why counting components per object is a check and not a nicety.
     """
     _sever_the_busiest_cell(written)
-    report = konnektion.verify(konnektion.open_collection(written, "p"), tier="topology")
-    assert names(report) == {"every object is in the number of connected pieces it declares"}, str(report)
+    report = konnektion.verify(
+        konnektion.open_collection(written, "p"), tier="topology"
+    )
+    assert names(report) == {
+        "every object is in the number of connected pieces it declares"
+    }, str(report)
 
 
 def test_an_out_of_range_edge_is_caught(written):
@@ -169,13 +185,12 @@ def _rewrite_geometry(store, mutate) -> None:  # type: ignore[no-untyped-def]
     table = parquet_to_table(store.objects[path])
     columns = {name: table.column(name).to_pylist() for name in table.column_names}
     mutate(columns)
-    store.objects[path] = table_to_parquet(
-        pa.table(columns, schema=table.schema)
-    )
+    store.objects[path] = table_to_parquet(pa.table(columns, schema=table.schema))
 
 
 def _corrupt_ghost_positions(store) -> None:  # type: ignore[no-untyped-def]
     """Shift every ghost blob by one quantum in x, as a wrong-box encoding would."""
+
     def mutate(columns):  # type: ignore[no-untyped-def]
         for row, blob in enumerate(columns["ghost_positions"]):
             if not blob:
@@ -184,11 +199,13 @@ def _corrupt_ghost_positions(store) -> None:  # type: ignore[no-untyped-def]
             values[:, 0] = np.clip(values[:, 0].astype(np.int64) + 20000, 0, 65535)
             columns["ghost_positions"][row] = values.tobytes()
             return
+
     _rewrite_geometry(store, mutate)
 
 
 def _corrupt_edges_out_of_range(store) -> None:  # type: ignore[no-untyped-def]
     """Point one edge endpoint past the end of its cell's node array."""
+
     def mutate(columns):  # type: ignore[no-untyped-def]
         for row, blob in enumerate(columns["edges"]):
             if not blob:
@@ -197,6 +214,7 @@ def _corrupt_edges_out_of_range(store) -> None:  # type: ignore[no-untyped-def]
             values[0] = 10_000
             columns["edges"][row] = values.tobytes()
             return
+
     _rewrite_geometry(store, mutate)
 
 
@@ -209,11 +227,15 @@ def _sever_the_busiest_cell(store) -> None:  # type: ignore[no-untyped-def]
     disconnects everything those edges were holding together, so the only thing left that can
     notice is the connectivity check.
     """
+
     def mutate(columns):  # type: ignore[no-untyped-def]
         target = int(np.argmax(columns["edge_count"]))
-        values = np.frombuffer(columns["edges"][target], dtype="<u4").copy().reshape(-1, 2)
+        values = (
+            np.frombuffer(columns["edges"][target], dtype="<u4").copy().reshape(-1, 2)
+        )
         if len(values) < 2:
             return
         values[1:] = values[0]
         columns["edges"][target] = values.tobytes()
+
     _rewrite_geometry(store, mutate)

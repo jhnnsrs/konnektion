@@ -97,7 +97,9 @@ def cell_box(
     return origin, extent
 
 
-def cell_of(points: npt.ArrayLike, level: int, cell_size: Sequence[int]) -> npt.NDArray[np.int64]:
+def cell_of(
+    points: npt.ArrayLike, level: int, cell_size: Sequence[int]
+) -> npt.NDArray[np.int64]:
     """The Morton code of the cell each point falls in, at one level.
 
     The whole of konnektion's "clipping": a node belongs to exactly one cell and is never cut,
@@ -107,7 +109,9 @@ def cell_of(points: npt.ArrayLike, level: int, cell_size: Sequence[int]) -> npt.
     """
     positions = np.asarray(points, dtype=np.float64)
     if positions.ndim != 2 or positions.shape[1] != 3:
-        raise ValueError(f"Node positions come as an (n, 3) array, got {positions.shape}.")
+        raise ValueError(
+            f"Node positions come as an (n, 3) array, got {positions.shape}."
+        )
     extent = np.asarray(cell_size, dtype=np.float64) * (2 ** int(level))
     return morton_encode(np.floor(positions / extent).astype(np.int64))
 

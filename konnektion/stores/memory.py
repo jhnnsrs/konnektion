@@ -35,7 +35,11 @@ class MemoryStore:
     def get_range(self, path: str, *, start: int, length: int | None = None) -> bytes:
         """Return one window of the bytes held under a path."""
         body = self.get(path)
-        return body[int(start) :] if length is None else body[int(start) : int(start) + int(length)]
+        return (
+            body[int(start) :]
+            if length is None
+            else body[int(start) : int(start) + int(length)]
+        )
 
     def list(self, prefix: str | None = None) -> Iterator[str]:
         """Yield every held path under ``prefix``."""

@@ -74,7 +74,10 @@ def _plan_parts(shard: pa.Table, max_part_bytes: int) -> list[pa.Table]:
     sizes = blob_sizes(shard)
     if sum(sizes) <= max_part_bytes:
         return [shard]
-    return [shard.slice(start, count) for start, count in plan_byte_chunks(sizes, max_part_bytes)]
+    return [
+        shard.slice(start, count)
+        for start, count in plan_byte_chunks(sizes, max_part_bytes)
+    ]
 
 
 def _locate(
@@ -104,7 +107,9 @@ def _with_locators(
 
     resolved = [locators.get(key) for key in _keys(catalog)]
     columns = {
-        "part": pa.array([None if item is None else item[0] for item in resolved], type=pa.int32()),
+        "part": pa.array(
+            [None if item is None else item[0] for item in resolved], type=pa.int32()
+        ),
         "row_group": pa.array(
             [None if item is None else item[1] for item in resolved], type=pa.int32()
         ),
@@ -159,16 +164,23 @@ def write_collection(
     for level, shard in sorted(collection.shards, key=lambda item: item[0]):
         entries: list[FileEntry] = []
         for number, part in enumerate(_plan_parts(shard, max_part_bytes)):
-            body, chunks = table_to_chunked_parquet(part, row_group_bytes=row_group_bytes, compression=parquet_compression)
+            body, chunks = table_to_chunked_parquet(
+                part, row_group_bytes=row_group_bytes, compression=parquet_compression
+            )
             path = level_part_path(level, number)
             put_bytes(store, join(prefix, path), body)
             entries.append(FileEntry(path=path, size=len(body), row_groups=len(chunks)))
             locators.update(_locate(part, number, chunks))
         levels[str(level)] = [entry.to_dict() for entry in entries]
 
-    catalog = table_to_parquet(_with_locators(collection.cell_catalog, locators), compression=parquet_compression)
+    catalog = table_to_parquet(
+        _with_locators(collection.cell_catalog, locators),
+        compression=parquet_compression,
+    )
     put_bytes(store, join(prefix, CELL_CATALOG_PATH), catalog)
-    objects = table_to_parquet(collection.object_catalog, compression=parquet_compression)
+    objects = table_to_parquet(
+        collection.object_catalog, compression=parquet_compression
+    )
     put_bytes(store, join(prefix, OBJECT_CATALOG_PATH), objects)
 
     written: dict[str, Any] = {

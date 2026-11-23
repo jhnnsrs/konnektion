@@ -79,9 +79,12 @@ def objects() -> dict[int, Network]:
 def ladder_objects() -> dict[int, Network]:
     """Eight large arbors, enough for the adaptive ladder to build a second level."""
     return {
-        seed: arbor(depth=9, spread=40.0,
-                    origin=(1200.0 + 1800 * (seed % 4), 1200.0 + 1800 * (seed // 4), 1200.0),
-                    seed=seed)
+        seed: arbor(
+            depth=9,
+            spread=40.0,
+            origin=(1200.0 + 1800 * (seed % 4), 1200.0 + 1800 * (seed // 4), 1200.0),
+            seed=seed,
+        )
         for seed in LADDER_SEEDS
     }
 
@@ -89,13 +92,17 @@ def ladder_objects() -> dict[int, Network]:
 @pytest.fixture(scope="session")
 def collection(objects: dict[int, Network]) -> konnektion.NetworkCollection:
     """A built one-level collection."""
-    return konnektion.build_collection(objects, cell_size=(128, 128, 128), axes=("x", "y", "z"))
+    return konnektion.build_collection(
+        objects, cell_size=(128, 128, 128), axes=("x", "y", "z")
+    )
 
 
 @pytest.fixture(scope="session")
 def ladder(ladder_objects: dict[int, Network]) -> konnektion.NetworkCollection:
     """A built collection deep enough to have coarser levels."""
-    return konnektion.build_collection(ladder_objects, cell_size=CELL_SIZE, axes=("x", "y", "z"))
+    return konnektion.build_collection(
+        ladder_objects, cell_size=CELL_SIZE, axes=("x", "y", "z")
+    )
 
 
 @pytest.fixture()

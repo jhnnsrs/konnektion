@@ -34,14 +34,21 @@ def test_positions_round_trip_within_half_a_quantum(compression):
         points, cell=cell, level=0, cell_size=CELL_SIZE, compression=compression
     )
     back = codecs.decode_positions(
-        blob, cell=cell, level=0, cell_size=CELL_SIZE, compression=compression, node_count=50
+        blob,
+        cell=cell,
+        level=0,
+        cell_size=CELL_SIZE,
+        compression=compression,
+        node_count=50,
     )
     assert np.all(np.abs(back - points) <= extent / QUANT_MAX / 2 + 1e-9)
 
 
 def test_positions_are_exactly_six_bytes_a_node_uncompressed():
     """The blob is a vertex buffer; a consumer uploads it without a decoder."""
-    blob = codecs.encode_positions(np.zeros((7, 3)), cell=0, level=0, cell_size=CELL_SIZE)
+    blob = codecs.encode_positions(
+        np.zeros((7, 3)), cell=0, level=0, cell_size=CELL_SIZE
+    )
     assert len(blob) == 6 * 7
 
 
@@ -70,13 +77,18 @@ def test_an_edge_blob_read_at_the_wrong_arity_would_not_error():
     edges = np.arange(12).reshape(6, 2)
     blob = codecs.encode_edges(edges)
     as_triples = np.frombuffer(blob, dtype="<u4").reshape(-1, 3)
-    assert as_triples.shape == (4, 3), "it reshapes cleanly, which is exactly the danger"
+    assert as_triples.shape == (4, 3), (
+        "it reshapes cleanly, which is exactly the danger"
+    )
 
 
 def test_edge_order_survives_the_round_trip():
     """`object_edge_offsets` names ranges, so a codec that reordered would break slicing."""
     edges = np.array([[5, 4], [0, 1], [3, 2]])
-    assert codecs.decode_edges(codecs.encode_edges(edges), edge_count=3).tolist() == edges.tolist()
+    assert (
+        codecs.decode_edges(codecs.encode_edges(edges), edge_count=3).tolist()
+        == edges.tolist()
+    )
 
 
 @pytest.mark.parametrize("declaration", [NODE_IDS_UINT64, NODE_IDS_UINT32])
@@ -84,7 +96,10 @@ def test_node_ids_round_trip(declaration):
     """A node keeps its identity across cells and levels, at either declared width."""
     ids = np.array([0, 7, 4294967295 if declaration == NODE_IDS_UINT32 else 2**40])
     blob = codecs.encode_node_ids(ids, declaration=declaration)
-    assert codecs.decode_node_ids(blob, declaration=declaration, node_count=3).tolist() == ids.tolist()
+    assert (
+        codecs.decode_node_ids(blob, declaration=declaration, node_count=3).tolist()
+        == ids.tolist()
+    )
 
 
 def test_an_id_too_large_for_its_declaration_is_refused():
@@ -126,7 +141,9 @@ def test_a_ghost_naming_the_wrong_owner_is_refused():
         codecs.encode_ghost_positions(far, np.array([0]), level=0, cell_size=CELL_SIZE)
 
 
-@pytest.mark.parametrize("declaration", [RADII_FLOAT32, RADII_UINT16_QUANTIZED_PER_CELL])
+@pytest.mark.parametrize(
+    "declaration", [RADII_FLOAT32, RADII_UINT16_QUANTIZED_PER_CELL]
+)
 def test_radii_round_trip(declaration):
     """Both encodings land within a quantum of what went in."""
     radii = np.array([0.0, 0.5, 3.25, 31.0])
@@ -134,7 +151,12 @@ def test_radii_round_trip(declaration):
         radii, declaration=declaration, cell=0, level=0, cell_size=CELL_SIZE
     )
     back = codecs.decode_radii(
-        blob, declaration=declaration, cell=0, level=0, cell_size=CELL_SIZE, node_count=4
+        blob,
+        declaration=declaration,
+        cell=0,
+        level=0,
+        cell_size=CELL_SIZE,
+        node_count=4,
     )
     assert np.allclose(back, radii, atol=64.0 / QUANT_MAX)
 
@@ -150,7 +172,11 @@ def test_a_collection_without_radii_cannot_write_them():
 def test_a_compressed_blob_needs_its_count_to_decode():
     """ZSTD framing carries no content size, so the row is the only statement of the length."""
     blob = codecs.encode_positions(
-        np.zeros((3, 3)), cell=0, level=0, cell_size=CELL_SIZE, compression=COMPRESSION_ZSTD
+        np.zeros((3, 3)),
+        cell=0,
+        level=0,
+        cell_size=CELL_SIZE,
+        compression=COMPRESSION_ZSTD,
     )
     with pytest.raises(FormatError, match="node_count"):
         codecs.decode_positions(
@@ -160,9 +186,13 @@ def test_a_compressed_blob_needs_its_count_to_decode():
 
 def test_a_count_disagreeing_with_its_blob_is_refused():
     """The row and the geometry would then belong to different writes."""
-    blob = codecs.encode_positions(np.zeros((3, 3)), cell=0, level=0, cell_size=CELL_SIZE)
+    blob = codecs.encode_positions(
+        np.zeros((3, 3)), cell=0, level=0, cell_size=CELL_SIZE
+    )
     with pytest.raises(FormatError, match="declares"):
-        codecs.decode_positions(blob, cell=0, level=0, cell_size=CELL_SIZE, node_count=5)
+        codecs.decode_positions(
+            blob, cell=0, level=0, cell_size=CELL_SIZE, node_count=5
+        )
 
 
 def test_an_unknown_codec_is_refused_naming_what_exists():

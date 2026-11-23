@@ -262,7 +262,8 @@ def coerce_network(source: NetworkSource) -> Network:
 
 
 def _coerce_attributes(
-    attributes: Any, node_count: int  # noqa: ANN401
+    attributes: Any,  # noqa: ANN401
+    node_count: int,
 ) -> dict[str, npt.NDArray[np.float64]]:
     """Validate caller-supplied per-node attributes, naming the one that is wrong.
 
@@ -321,4 +322,10 @@ def coerce_objects(objects: Mapping[int, NetworkSource]) -> dict[int, Network]:
     return coerced
 
 
-__all__ = ["HasNodesAndEdges", "Network", "NetworkSource", "coerce_network", "coerce_objects"]
+__all__ = [
+    "HasNodesAndEdges",
+    "Network",
+    "NetworkSource",
+    "coerce_network",
+    "coerce_objects",
+]

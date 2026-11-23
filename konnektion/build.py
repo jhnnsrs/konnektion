@@ -150,7 +150,8 @@ def choose_cell_size(
     if not objects:
         return (64, 64, 64)
     extents = np.array(
-        [network.bounds[1] - network.bounds[0] for network in objects.values()], dtype=np.float64
+        [network.bounds[1] - network.bounds[0] for network in objects.values()],
+        dtype=np.float64,
     )
     target = 2.0 * np.percentile(extents, 90, axis=0)
     chosen: list[int] = []
@@ -186,7 +187,10 @@ def _with_attributes(
         )
 
     declared = [
-        *(Attribute(name=name, semantics=semantics) for name, semantics in INTRINSIC_ATTRIBUTES),
+        *(
+            Attribute(name=name, semantics=semantics)
+            for name, semantics in INTRINSIC_ATTRIBUTES
+        ),
         *(Attribute(name=name) for name in user_names),
     ]
 
@@ -227,9 +231,13 @@ def _coarsened_levels(
     for level in range(1, levels):
         previous = current
         pruned, kept_prune = geometry.prune_to_order(
-            current, coarsening.strahler_threshold(level), floor_nodes=coarsening.floor_nodes
+            current,
+            coarsening.strahler_threshold(level),
+            floor_nodes=coarsening.floor_nodes,
         )
-        simplified, kept_simplify = geometry.simplify(pruned, coarsening.epsilon_at(level))
+        simplified, kept_simplify = geometry.simplify(
+            pruned, coarsening.epsilon_at(level)
+        )
         # Compose the two index maps so the deviation is measured against the level below.
         kept = kept_prune[kept_simplify] if len(kept_prune) else kept_simplify
         error = geometry.polyline_deviation(previous, simplified, kept)
@@ -240,7 +248,15 @@ def _coarsened_levels(
 
 def _partition(
     network: Network, level: int, cell_size: Sequence[int]
-) -> dict[int, tuple[npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.int64]]]:
+) -> dict[
+    int,
+    tuple[
+        npt.NDArray[np.int64],
+        npt.NDArray[np.int64],
+        npt.NDArray[np.int64],
+        npt.NDArray[np.int64],
+    ],
+]:
     """Assign one coarsened graph to cells, resolving ghosts.
 
     Returns, per cell: the object-local indices of the nodes it **owns**, the object-local
@@ -272,19 +288,32 @@ def _partition(
             foreign = b if cell_a == owner else a
             needed.setdefault(owner, set()).add(foreign)
 
-    partition: dict[int, tuple[npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.int64]]] = {}
+    partition: dict[
+        int,
+        tuple[
+            npt.NDArray[np.int64],
+            npt.NDArray[np.int64],
+            npt.NDArray[np.int64],
+            npt.NDArray[np.int64],
+        ],
+    ] = {}
     for cell in sorted(set(owned) | set(edge_owner)):
         residents = list(owned.get(cell, []))
         ghosts = sorted(needed.get(cell, set()) - set(residents))
         local = {node: position for position, node in enumerate(residents + ghosts)}
         edges = np.array(
-            [[local[a], local[b]] for a, b in network.edges[edge_owner.get(cell, [])].tolist()],
+            [
+                [local[a], local[b]]
+                for a, b in network.edges[edge_owner.get(cell, [])].tolist()
+            ],
             dtype=np.int64,
         ).reshape(-1, 2)
         partition[cell] = (
             np.asarray(residents, dtype=np.int64),
             np.asarray(ghosts, dtype=np.int64),
-            cells[np.asarray(ghosts, dtype=np.int64)] if ghosts else np.zeros(0, dtype=np.int64),
+            cells[np.asarray(ghosts, dtype=np.int64)]
+            if ghosts
+            else np.zeros(0, dtype=np.int64),
             edges,
         )
     return partition
@@ -339,7 +368,9 @@ def build_collection(
     recompute them, so a node's metric is the same number at every level it survives to.
     """
     if axes is None:  # pyright: ignore[reportUnnecessaryComparison]  -- untyped callers still pass it
-        raise TypeError("build_collection needs `axes=`: the names of the three node-position slots, in slot order. Without them the manifest could only be read by guessing which slot is which.")
+        raise TypeError(
+            "build_collection needs `axes=`: the names of the three node-position slots, in slot order. Without them the manifest could only be read by guessing which slot is which."
+        )
     coerced = coerce_objects(objects)
     if len(coerced) > MAX_ORDINAL:
         raise FormatError(
@@ -358,7 +389,9 @@ def build_collection(
     grid_cell_size = tuple(int(c) for c in (cell_size or choose_cell_size(coerced)))
 
     with_radii = any(network.radii is not None for network in coerced.values())
-    radii_declaration = radii if radii is not None else (RADII_FLOAT32 if with_radii else RADII_NONE)
+    radii_declaration = (
+        radii if radii is not None else (RADII_FLOAT32 if with_radii else RADII_NONE)
+    )
     if radii_declaration != RADII_NONE and not with_radii:
         raise FormatError(
             f"`radii` is {radii_declaration!r} but no object carries one. A declared radius "
@@ -398,13 +431,27 @@ def build_collection(
 
     cell_rows: list[dict[str, Any]] = []
     shard_rows: dict[int, list[dict[str, Any]]] = {level: [] for level in range(depth)}
-    object_cells: dict[int, list[tuple[int, int]]] = {object_id: [] for object_id in coerced}
+    object_cells: dict[int, list[tuple[int, int]]] = {
+        object_id: [] for object_id in coerced
+    }
     object_counts: dict[int, tuple[int, int]] = {}
     present: dict[int, set[int]] = {level: set() for level in range(depth)}
 
     for level in range(depth):
         # cell -> per-object contributions, so one row can hold several objects.
-        buckets: dict[int, list[tuple[int, Network, npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.int64]]]] = {}
+        buckets: dict[
+            int,
+            list[
+                tuple[
+                    int,
+                    Network,
+                    npt.NDArray[np.int64],
+                    npt.NDArray[np.int64],
+                    npt.NDArray[np.int64],
+                    npt.NDArray[np.int64],
+                ]
+            ],
+        ] = {}
         errors: dict[int, float] = {}
         for object_id, built in per_object.items():
             network, error = built[level]
@@ -445,7 +492,10 @@ def build_collection(
         encoding=encoding,
         cell_catalog=build_table(cell_rows, schemas["cell_catalog"]),
         object_catalog=build_table(object_rows, schemas["object_catalog"]),
-        shards=[(level, build_table(shard_rows[level], schemas["geometry"])) for level in range(depth)],
+        shards=[
+            (level, build_table(shard_rows[level], schemas["geometry"]))
+            for level in range(depth)
+        ],
         axes=[str(name) for name in axes],
         shape=shape,
         attributes=declared_attributes,
@@ -475,7 +525,9 @@ def _choose_depth(
         coarser: dict[int, Network] = {}
         for object_id, network in current.items():
             pruned, _ = geometry.prune_to_order(
-                network, schedule.strahler_threshold(depth), floor_nodes=schedule.floor_nodes
+                network,
+                schedule.strahler_threshold(depth),
+                floor_nodes=schedule.floor_nodes,
             )
             simplified, _ = geometry.simplify(pruned, schedule.epsilon_at(depth))
             coarser[object_id] = simplified
@@ -495,7 +547,16 @@ def _choose_depth(
 def _emit_cell(
     cell: int,
     level: int,
-    contributions: Sequence[tuple[int, Network, npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.int64]]],
+    contributions: Sequence[
+        tuple[
+            int,
+            Network,
+            npt.NDArray[np.int64],
+            npt.NDArray[np.int64],
+            npt.NDArray[np.int64],
+            npt.NDArray[np.int64],
+        ]
+    ],
     cell_size: Sequence[int],
     encoding: Encoding,
     error: float,
@@ -546,7 +607,9 @@ def _emit_cell(
             owned_radii.append(
                 np.zeros(len(residents)) if source is None else source[residents]
             )
-            ghost_radii.append(np.zeros(len(ghosts)) if source is None else source[ghosts])
+            ghost_radii.append(
+                np.zeros(len(ghosts)) if source is None else source[ghosts]
+            )
         for name in attribute_names:
             values = (network.attributes or {})[name]
             owned_attribute_values[name].append(values[residents])
@@ -573,49 +636,78 @@ def _emit_cell(
         ghost_cursor += len(ghosts)
         edge_cursor += len(local_edges)
 
-    def stack(parts: list[npt.NDArray[np.float64]], width: int) -> npt.NDArray[np.float64]:
+    def stack(
+        parts: list[npt.NDArray[np.float64]], width: int
+    ) -> npt.NDArray[np.float64]:
         return np.concatenate(parts) if parts else np.zeros((0, width) if width else 0)
 
     all_owned = stack(owned_positions, 3)
     all_ghosts = stack(ghost_positions, 3)
-    all_owned_ids = np.concatenate(owned_ids) if owned_ids else np.zeros(0, dtype=np.int64)
-    all_ghost_ids = np.concatenate(ghost_ids) if ghost_ids else np.zeros(0, dtype=np.int64)
-    all_owners = np.concatenate(ghost_owners) if ghost_owners else np.zeros(0, dtype=np.int64)
+    all_owned_ids = (
+        np.concatenate(owned_ids) if owned_ids else np.zeros(0, dtype=np.int64)
+    )
+    all_ghost_ids = (
+        np.concatenate(ghost_ids) if ghost_ids else np.zeros(0, dtype=np.int64)
+    )
+    all_owners = (
+        np.concatenate(ghost_owners) if ghost_owners else np.zeros(0, dtype=np.int64)
+    )
     all_edges = np.concatenate(edges) if edges else np.zeros((0, 2), dtype=np.int64)
 
     position_blob = encode_positions(
-        all_owned, cell=cell, level=level, cell_size=cell_size,
-        codec=encoding.codec, compression=encoding.compression,
+        all_owned,
+        cell=cell,
+        level=level,
+        cell_size=cell_size,
+        codec=encoding.codec,
+        compression=encoding.compression,
     )
     id_blob = encode_node_ids(
-        all_owned_ids, declaration=encoding.node_ids,
-        codec=encoding.codec, compression=encoding.compression,
+        all_owned_ids,
+        declaration=encoding.node_ids,
+        codec=encoding.codec,
+        compression=encoding.compression,
     )
-    edge_blob = encode_edges(all_edges, codec=encoding.codec, compression=encoding.compression)
+    edge_blob = encode_edges(
+        all_edges, codec=encoding.codec, compression=encoding.compression
+    )
     ghost_position_blob = encode_ghost_positions(
-        all_ghosts, all_owners, level=level, cell_size=cell_size,
-        codec=encoding.codec, compression=encoding.compression,
+        all_ghosts,
+        all_owners,
+        level=level,
+        cell_size=cell_size,
+        codec=encoding.codec,
+        compression=encoding.compression,
     )
     ghost_cell_blob = encode_ghost_cells(
         all_owners, codec=encoding.codec, compression=encoding.compression
     )
     ghost_id_blob = encode_node_ids(
-        all_ghost_ids, declaration=encoding.node_ids,
-        codec=encoding.codec, compression=encoding.compression,
+        all_ghost_ids,
+        declaration=encoding.node_ids,
+        codec=encoding.codec,
+        compression=encoding.compression,
     )
 
     radius_blob = ghost_radius_blob = None
     if encoding.has_radii:
         radius_blob = encode_radii(
             np.concatenate(owned_radii) if owned_radii else np.zeros(0),
-            declaration=encoding.radii, cell=cell, level=level, cell_size=cell_size,
-            codec=encoding.codec, compression=encoding.compression,
+            declaration=encoding.radii,
+            cell=cell,
+            level=level,
+            cell_size=cell_size,
+            codec=encoding.codec,
+            compression=encoding.compression,
         )
         # A ghost's radius belongs to its owning cell, so it is quantized there too. With
         # FLOAT32 this is moot; with the quantized encoding it is the same trap as the position.
         ghost_radius_blob = _encode_ghost_radii(
             np.concatenate(ghost_radii) if ghost_radii else np.zeros(0),
-            all_owners, level, cell_size, encoding,
+            all_owners,
+            level,
+            cell_size,
+            encoding,
         )
 
     # Ghost values ride in their own blob like ghost radii do, but need no owner-cell dance:
@@ -623,19 +715,30 @@ def _emit_cell(
     attribute_blobs: dict[str, bytes] = {}
     for name in attribute_names:
         attribute_blobs[attribute_column(name)] = encode_attribute_values(
-            np.concatenate(owned_attribute_values[name]) if owned_attribute_values[name] else np.zeros(0),
+            np.concatenate(owned_attribute_values[name])
+            if owned_attribute_values[name]
+            else np.zeros(0),
             declaration=ATTRIBUTE_FLOAT32,
             codec=encoding.codec,
             compression=encoding.compression,
         )
         attribute_blobs[ghost_attribute_column(name)] = encode_attribute_values(
-            np.concatenate(ghost_attribute_values[name]) if ghost_attribute_values[name] else np.zeros(0),
+            np.concatenate(ghost_attribute_values[name])
+            if ghost_attribute_values[name]
+            else np.zeros(0),
             declaration=ATTRIBUTE_FLOAT32,
             codec=encoding.codec,
             compression=encoding.compression,
         )
 
-    blobs = [position_blob, id_blob, edge_blob, ghost_position_blob, ghost_cell_blob, ghost_id_blob]
+    blobs = [
+        position_blob,
+        id_blob,
+        edge_blob,
+        ghost_position_blob,
+        ghost_cell_blob,
+        ghost_id_blob,
+    ]
     blobs += [blob for blob in (radius_blob, ghost_radius_blob) if blob is not None]
     blobs += list(attribute_blobs.values())
 
@@ -705,13 +808,22 @@ def _encode_ghost_radii(
     """Encode ghost radii against each ghost's owning cell, one cell at a time."""
     if encoding.radii == RADII_FLOAT32 or not len(radii):
         return encode_radii(
-            radii, declaration=encoding.radii, cell=0, level=level, cell_size=cell_size,
-            codec=encoding.codec, compression=encoding.compression,
+            radii,
+            declaration=encoding.radii,
+            cell=0,
+            level=level,
+            cell_size=cell_size,
+            codec=encoding.codec,
+            compression=encoding.compression,
         )
     pieces = [
         encode_radii(
-            radii[index : index + 1], declaration=encoding.radii, cell=int(owners[index]),
-            level=level, cell_size=cell_size, codec=encoding.codec,
+            radii[index : index + 1],
+            declaration=encoding.radii,
+            cell=int(owners[index]),
+            level=level,
+            cell_size=cell_size,
+            codec=encoding.codec,
             compression=COMPRESSION_NONE,
         )
         for index in range(len(radii))
@@ -734,17 +846,27 @@ def _object_catalog(
         root_id = None
         if network.root is not None:
             root_id = int(network.ids()[network.root])
-        rows.append({
-            "object_id": int(object_id),
-            "ordinal": int(ordinals[object_id]),
-            "root_node_id": root_id,
-            "component_count": _component_count(network),
-            **{f"bbox_min_{axis}": float(low[index]) for index, axis in enumerate("xyz")},
-            **{f"bbox_max_{axis}": float(high[index]) for index, axis in enumerate("xyz")},
-            "node_count": int(nodes),
-            "edge_count": int(edges),
-            "cells": [int(cell) for _, cell in sorted(set(object_cells[object_id]))],
-        })
+        rows.append(
+            {
+                "object_id": int(object_id),
+                "ordinal": int(ordinals[object_id]),
+                "root_node_id": root_id,
+                "component_count": _component_count(network),
+                **{
+                    f"bbox_min_{axis}": float(low[index])
+                    for index, axis in enumerate("xyz")
+                },
+                **{
+                    f"bbox_max_{axis}": float(high[index])
+                    for index, axis in enumerate("xyz")
+                },
+                "node_count": int(nodes),
+                "edge_count": int(edges),
+                "cells": [
+                    int(cell) for _, cell in sorted(set(object_cells[object_id]))
+                ],
+            }
+        )
     return rows
 
 

@@ -339,7 +339,11 @@ class Attribute:
 
     def to_dict(self) -> dict[str, Any]:
         """The manifest's entry for this attribute, ``semantics`` written even when null."""
-        return {"name": self.name, "encoding": self.encoding, "semantics": self.semantics}
+        return {
+            "name": self.name,
+            "encoding": self.encoding,
+            "semantics": self.semantics,
+        }
 
     @classmethod
     def from_any(cls, raw: Any) -> Attribute:  # noqa: ANN401
@@ -362,7 +366,9 @@ def _read_attributes(raw: Any) -> tuple[Attribute, ...]:  # noqa: ANN401
     if raw is None:
         return ()
     if isinstance(raw, str) or not isinstance(raw, Sequence):
-        raise FormatError(f"A manifest's `attributes` is a list of declarations, got {raw!r}.")
+        raise FormatError(
+            f"A manifest's `attributes` is a list of declarations, got {raw!r}."
+        )
     declared = tuple(Attribute.from_any(entry) for entry in raw)
     names = [attribute.name for attribute in declared]
     if len(set(names)) != len(names):
@@ -397,7 +403,9 @@ class Grid:
 
     def __post_init__(self) -> None:
         """Refuse a grid that cannot address a graph."""
-        if len(self.cell_size) != 3 or any(int(component) < 1 for component in self.cell_size):
+        if len(self.cell_size) != 3 or any(
+            int(component) < 1 for component in self.cell_size
+        ):
             raise FormatError(
                 f"`cell_size` is three whole numbers of at least 1 voxel, one per component in "
                 f"the same order as the node positions, got {self.cell_size!r}."
@@ -486,7 +494,9 @@ class Coarsening:
                 f"`floor_nodes` is at least one segment's worth, 2, got {self.floor_nodes}."
             )
         if self.strahler_step < 0:
-            raise FormatError(f"`strahler_step` is non-negative, got {self.strahler_step}.")
+            raise FormatError(
+                f"`strahler_step` is non-negative, got {self.strahler_step}."
+            )
         if self.epsilon < 0.0:
             raise FormatError(f"`epsilon` is non-negative, got {self.epsilon}.")
         prunes = self.strahler_step > 0
@@ -504,7 +514,10 @@ class Coarsening:
                 f"schedule that moves no node declares {SIMPLIFICATION_NONE}, and one that does "
                 f"must not."
             )
-        for key, value in (("pruning", self.pruning), ("simplification", self.simplification)):
+        for key, value in (
+            ("pruning", self.pruning),
+            ("simplification", self.simplification),
+        ):
             if value not in _ENCODING_VOCABULARY[key]:
                 raise FormatError(
                     f"`{key}` is {value!r}; the format defines "
@@ -532,7 +545,9 @@ class Coarsening:
     @property
     def coarsens(self) -> bool:
         """Whether this schedule changes anything at all."""
-        return self.pruning != PRUNING_NONE or self.simplification != SIMPLIFICATION_NONE
+        return (
+            self.pruning != PRUNING_NONE or self.simplification != SIMPLIFICATION_NONE
+        )
 
     def strahler_threshold(self, level: int) -> int:
         """The smallest Strahler order that survives into ``level``."""
@@ -595,7 +610,9 @@ class Encoding:
         Never sparse: a renderer configures its decoder from what it reads back, so a manifest
         that omits a key it resolved internally hands every reader an encoding that says nothing.
         """
-        return {key: getattr(self, attribute) for attribute, key in _ENCODING_FIELDS.items()}
+        return {
+            key: getattr(self, attribute) for attribute, key in _ENCODING_FIELDS.items()
+        }
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> Encoding:
@@ -632,7 +649,9 @@ def _read_shape(raw: Any) -> tuple[int, int, int] | None:  # noqa: ANN401
     try:
         values = tuple(int(component) for component in raw)
     except (TypeError, ValueError) as error:
-        raise FormatError(f"A manifest's `shape` is three whole numbers, got {raw!r}.") from error
+        raise FormatError(
+            f"A manifest's `shape` is three whole numbers, got {raw!r}."
+        ) from error
     if len(values) != _SHAPE_RANK:
         raise FormatError(
             f"A network lives in three dimensions, so `shape` takes 3 values, got {raw!r}."
@@ -648,7 +667,9 @@ def _read_axes(raw: Any) -> list[str] | None:  # noqa: ANN401
         raise FormatError(f"A manifest's `axes` is a list of three names, got {raw!r}.")
     names = [str(name) for name in raw]
     if len(names) != _SHAPE_RANK:
-        raise FormatError(f"A network has three axes, so `axes` takes 3 names, got {raw!r}.")
+        raise FormatError(
+            f"A network has three axes, so `axes` takes 3 names, got {raw!r}."
+        )
     return names
 
 
@@ -711,7 +732,9 @@ class Manifest:
         try:
             raw = json.loads(body)
         except ValueError as error:
-            raise FormatError(f"This prefix's {MANIFEST_NAME} is not JSON: {error}") from error
+            raise FormatError(
+                f"This prefix's {MANIFEST_NAME} is not JSON: {error}"
+            ) from error
         if not isinstance(raw, Mapping):
             raise FormatError(f"A manifest is a JSON object, got {type(raw).__name__}.")
         return cls.from_dict(raw)
@@ -737,7 +760,9 @@ class Manifest:
         if not isinstance(grid, Mapping):
             raise FormatError(f"A manifest carries a `grid` object, got {grid!r}.")
         if not isinstance(encoding, Mapping):
-            raise FormatError(f"A manifest carries an `encoding` object, got {encoding!r}.")
+            raise FormatError(
+                f"A manifest carries an `encoding` object, got {encoding!r}."
+            )
         counts = dict(raw.get("counts") or {})
         files = dict(raw.get("files") or {})
         return cls(

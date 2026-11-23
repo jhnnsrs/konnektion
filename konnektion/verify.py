@@ -124,7 +124,9 @@ def verify(collection: Collection, *, tier: str = "blobs") -> VerifyReport:
         checks.extend(found)
         skipped.extend(notes)
     else:
-        skipped.append("the `topology` tier, which is what checks connectivity and ghosts")
+        skipped.append(
+            "the `topology` tier, which is what checks connectivity and ghosts"
+        )
 
     return VerifyReport(checks=tuple(checks), tier=tier, skipped=tuple(skipped))
 
@@ -153,9 +155,7 @@ def _the_manifest_names_what_exists(collection: Collection) -> Check:
     for entries in levels.values():
         wanted.extend(entry["path"] for entry in entries)
 
-    missing = [
-        path for path in wanted if join(collection.prefix, path) not in present
-    ]
+    missing = [path for path in wanted if join(collection.prefix, path) not in present]
     return Check(
         name="every file the manifest names is present",
         tier="structure",
@@ -188,7 +188,9 @@ def _every_object_names_cells_that_exist(collection: Collection) -> Check:
     for entry in collection.objects.values():
         for cell in entry.cells:
             if cell not in keys:
-                broken.append(f"object {entry.object_id} names cell {cell}, which has no row")
+                broken.append(
+                    f"object {entry.object_id} names cell {cell}, which has no row"
+                )
     return Check(
         name="every object's cells exist in the cell catalog",
         tier="structure",
@@ -202,7 +204,9 @@ def _levels_are_within_the_grid(collection: Collection) -> Check:
     """No cell claims a level the grid does not have."""
     depth = collection.grid.levels
     stray = [
-        f"level {level} cell {cell}" for level, cell in collection.cells if not 0 <= level < depth
+        f"level {level} cell {cell}"
+        for level, cell in collection.cells
+        if not 0 <= level < depth
     ]
     return Check(
         name="every cell's level is inside the grid",
@@ -282,7 +286,10 @@ def _blobs(collection: Collection) -> tuple[list[Check], list[str]]:
                     )
                 for attribute in declared:
                     values = cell.attributes.get(attribute.name)
-                    if values is None or len(values) != entry.node_count + entry.ghost_count:
+                    if (
+                        values is None
+                        or len(values) != entry.node_count + entry.ghost_count
+                    ):
                         short_attributes.append(
                             f"{where} decoded {0 if values is None else len(values)} values of "
                             f"{attribute.name!r}, catalog says {entry.node_count} + "
@@ -290,7 +297,9 @@ def _blobs(collection: Collection) -> tuple[list[Check], list[str]]:
                         )
                 # An owned node must be inside the box it was quantized against. A ghost must not
                 # be -- that is what makes it a ghost -- so only the owned half is checked here.
-                origin, extent = cell_box(cell.cell, cell.level, collection.grid.cell_size)
+                origin, extent = cell_box(
+                    cell.cell, cell.level, collection.grid.cell_size
+                )
                 owned = cell.positions[: cell.node_count]
                 if len(owned):
                     relative = (owned - origin) / extent
@@ -376,7 +385,9 @@ def _attribute_columns_match_the_manifest(collection: Collection) -> Check:
     for level in collection.levels():
         for part, columns in collection.geometry_columns(level).items():
             present = {
-                column for column in columns if column.startswith(("attr_", "ghost_attr_"))
+                column
+                for column in columns
+                if column.startswith(("attr_", "ghost_attr_"))
             }
             for extra in sorted(present - wanted):
                 problems.append(
@@ -407,7 +418,9 @@ def _topology(collection: Collection) -> tuple[list[Check], list[str]]:
     skipped: list[str] = []
     encoding = collection.encoding
 
-    per_level = {level: list(collection.iter_cells(level)) for level in collection.levels()}
+    per_level = {
+        level: list(collection.iter_cells(level)) for level in collection.levels()
+    }
 
     checks.append(_ghosts_are_copies(collection, per_level))
     checks.append(_ghosts_belong_to_the_cell_they_name(collection, per_level))
@@ -421,7 +434,10 @@ def _topology(collection: Collection) -> tuple[list[Check], list[str]]:
         )
         return checks, skipped
 
-    if encoding.pruning == PRUNING_NONE and encoding.simplification == SIMPLIFICATION_NONE:
+    if (
+        encoding.pruning == PRUNING_NONE
+        and encoding.simplification == SIMPLIFICATION_NONE
+    ):
         skipped.append(
             "the coarsening checks: the manifest declares pruning: NONE and "
             "simplification: NONE, so no level claims to be a reduction of another"
@@ -532,7 +548,8 @@ def _ghosts_are_copies(collection: Collection, per_level: dict[int, list]) -> Ch
 
 
 def _ghosts_belong_to_the_cell_they_name(
-    collection: Collection, per_level: dict[int, list]  # type: ignore[type-arg]
+    collection: Collection,
+    per_level: dict[int, list],  # type: ignore[type-arg]
 ) -> Check:
     """``ghost_cells`` names the cell that really owns each ghost.
 
@@ -566,7 +583,8 @@ def _ghosts_belong_to_the_cell_they_name(
 
 
 def _every_level_is_connected(
-    collection: Collection, per_level: dict[int, list]  # type: ignore[type-arg]
+    collection: Collection,
+    per_level: dict[int, list],  # type: ignore[type-arg]
 ) -> Check:
     """Every object, at every level, is in exactly the number of pieces it declares.
 
@@ -591,7 +609,9 @@ def _every_level_is_connected(
         for object_id, pieces in found.items():
             entry = collection.objects.get(object_id)
             if entry is None:
-                broken.append(f"level {level} holds object {object_id}, which has no catalog row")
+                broken.append(
+                    f"level {level} holds object {object_id}, which has no catalog row"
+                )
                 continue
             compared += 1
             if pieces > entry.component_count:
@@ -649,12 +669,16 @@ def _coarse_levels_are_smaller(collection: Collection) -> Check:
     """A coarse level that is not smaller is an octree that costs a fetch and saves nothing."""
     nodes = {
         level: sum(
-            entry.node_count for entry in collection.cells.values() if entry.level == level
+            entry.node_count
+            for entry in collection.cells.values()
+            if entry.level == level
         )
         for level in collection.levels()
     }
     inverted = [
-        level for level in range(1, collection.grid.levels) if nodes[level] > nodes[level - 1]
+        level
+        for level in range(1, collection.grid.levels)
+        if nodes[level] > nodes[level - 1]
     ]
     ratios = ", ".join(
         f"L{level}/L{level - 1}={nodes[level] / nodes[level - 1]:.2f}"
@@ -666,12 +690,15 @@ def _coarse_levels_are_smaller(collection: Collection) -> Check:
         tier="topology",
         ok=not inverted,
         detail=f"node counts {nodes}; {ratios or 'nothing to compare'}",
-        examples=tuple(f"level {level} is larger than level {level - 1}" for level in inverted),
+        examples=tuple(
+            f"level {level} is larger than level {level - 1}" for level in inverted
+        ),
     )
 
 
 def _a_coarse_level_is_a_subset(
-    collection: Collection, per_level: dict[int, list]  # type: ignore[type-arg]
+    collection: Collection,
+    per_level: dict[int, list],  # type: ignore[type-arg]
 ) -> Check:
     """Every node at a coarse level is present, at the same place, at every finer level.
 
@@ -713,7 +740,8 @@ def _a_coarse_level_is_a_subset(
 
 
 def _attribute_map(
-    cells: Sequence, name: str  # type: ignore[type-arg]
+    cells: Sequence,  # type: ignore[type-arg]
+    name: str,
 ) -> dict[tuple[int, int], float]:
     """``(object_id, node_id)`` -> attribute value, from the owned nodes of one level."""
     found: dict[tuple[int, int], float] = {}
@@ -728,7 +756,8 @@ def _attribute_map(
 
 
 def _attribute_values_survive_coarsening(
-    collection: Collection, per_level: dict[int, list]  # type: ignore[type-arg]
+    collection: Collection,
+    per_level: dict[int, list],  # type: ignore[type-arg]
 ) -> Check:
     """A node kept at a coarse level carries the value it had at level 0, per attribute.
 
@@ -771,7 +800,8 @@ def _attribute_values_survive_coarsening(
 
 
 def _lod_error_is_a_real_bound(
-    collection: Collection, per_level: dict[int, list]  # type: ignore[type-arg]
+    collection: Collection,
+    per_level: dict[int, list],  # type: ignore[type-arg]
 ) -> Check:
     """``lod_error`` bounds how far the drawn polyline strayed from the level below it.
 
@@ -785,11 +815,18 @@ def _lod_error_is_a_real_bound(
     for level in range(1, collection.grid.levels):
         fine = _node_map(per_level[level - 1])
         budget = max(
-            (entry.lod_error for entry in collection.cells.values() if entry.level == level),
+            (
+                entry.lod_error
+                for entry in collection.cells.values()
+                if entry.level == level
+            ),
             default=0.0,
         )
         for cell in per_level[level]:
-            keys = {index: (object_id, node_id) for object_id, node_id, index, _ in _members(cell)}
+            keys = {
+                index: (object_id, node_id)
+                for object_id, node_id, index, _ in _members(cell)
+            }
             for a, b in cell.edges.tolist():
                 if keys.get(a) not in fine or keys.get(b) not in fine:
                     continue

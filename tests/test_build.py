@@ -22,7 +22,9 @@ from tests.conftest import arbor, chain
 
 def test_small_data_gets_one_level_and_says_it_coarsened_nothing():
     """If it does not need downscaling, it is not downscaled -- and the manifest is honest."""
-    collection = konnektion.build_collection({1: arbor(depth=4)}, cell_size=(128, 128, 128), axes=("x", "y", "z"))
+    collection = konnektion.build_collection(
+        {1: arbor(depth=4)}, cell_size=(128, 128, 128), axes=("x", "y", "z")
+    )
     assert collection.grid.levels == 1
     assert collection.encoding.pruning == PRUNING_NONE
     assert collection.encoding.simplification == SIMPLIFICATION_NONE
@@ -45,7 +47,8 @@ def test_large_data_grows_a_ladder(ladder):
 def test_each_level_is_smaller_than_the_one_below(ladder):
     """A coarse level that is not smaller costs a fetch and saves nothing."""
     counts = {
-        level: sum(table.column("node_count").to_pylist()) for level, table in ladder.shards
+        level: sum(table.column("node_count").to_pylist())
+        for level, table in ladder.shards
     }
     for level in range(1, ladder.grid.levels):
         assert counts[level] < counts[level - 1], counts
@@ -72,7 +75,9 @@ def test_a_crossing_edge_produces_a_ghost(collection):
 
 def test_a_graph_inside_one_cell_needs_no_ghosts():
     """The degenerate case is genuinely free -- no crossings, so no copies."""
-    collection = konnektion.build_collection({1: chain(5)}, cell_size=(1024, 1024, 1024), axes=("x", "y", "z"))
+    collection = konnektion.build_collection(
+        {1: chain(5)}, cell_size=(1024, 1024, 1024), axes=("x", "y", "z")
+    )
     assert sum(collection.cell_catalog.column("ghost_count").to_pylist()) == 0
 
 
@@ -83,7 +88,9 @@ def test_radii_are_carried_when_the_objects_have_them(collection):
 
 def test_radii_are_absent_when_the_objects_have_none():
     """A column that would hold nothing is not declared at all."""
-    collection = konnektion.build_collection({1: chain(5)}, cell_size=(256, 256, 256), axes=("x", "y", "z"))
+    collection = konnektion.build_collection(
+        {1: chain(5)}, cell_size=(256, 256, 256), axes=("x", "y", "z")
+    )
     assert collection.encoding.radii == RADII_NONE
 
 
@@ -91,15 +98,22 @@ def test_declaring_radii_that_do_not_exist_is_refused():
     """A declared column holding zeros is a place for a reader to find data that is not there."""
     with pytest.raises(FormatError, match="no object carries one"):
         konnektion.build_collection(
-            {1: chain(5)}, cell_size=(256, 256, 256), radii=RADII_FLOAT32, axes=("x", "y", "z")
+            {1: chain(5)},
+            cell_size=(256, 256, 256),
+            radii=RADII_FLOAT32,
+            axes=("x", "y", "z"),
         )
 
 
 def test_a_negative_coordinate_is_refused():
     """The octree addresses the positive octant; shifting is the caller's to do knowingly."""
-    network = Network(nodes=np.array([[-1.0, 0, 0], [1.0, 0, 0]]), edges=np.array([[0, 1]]))
+    network = Network(
+        nodes=np.array([[-1.0, 0, 0], [1.0, 0, 0]]), edges=np.array([[0, 1]])
+    )
     with pytest.raises(FormatError, match="positive octant"):
-        konnektion.build_collection({1: network}, cell_size=(64, 64, 64), axes=("x", "y", "z"))
+        konnektion.build_collection(
+            {1: network}, cell_size=(64, 64, 64), axes=("x", "y", "z")
+        )
 
 
 def test_the_object_catalog_declares_the_component_count(collection):
@@ -113,14 +127,18 @@ def test_a_disconnected_object_declares_its_pieces():
     nodes = np.array([[10.0, 10, 10], [11, 10, 10], [50, 50, 50], [51, 50, 50]])
     edges = np.array([[0, 1], [2, 3]])
     collection = konnektion.build_collection(
-        {1: Network(nodes=nodes, edges=edges)}, cell_size=(256, 256, 256), axes=("x", "y", "z")
+        {1: Network(nodes=nodes, edges=edges)},
+        cell_size=(256, 256, 256),
+        axes=("x", "y", "z"),
     )
     assert collection.object_catalog.column("component_count").to_pylist() == [2]
 
 
 def test_cell_size_is_taken_when_given_and_chosen_when_not(objects):
     """The chunk shape is worth matching, and nothing about the nodes can reveal it."""
-    given = konnektion.build_collection(objects, cell_size=(128, 128, 128), axes=("x", "y", "z"))
+    given = konnektion.build_collection(
+        objects, cell_size=(128, 128, 128), axes=("x", "y", "z")
+    )
     assert tuple(given.grid.cell_size) == (128, 128, 128)
     chosen = konnektion.build_collection(objects, axes=("x", "y", "z"))
     assert all(size >= 16 for size in chosen.grid.cell_size)
@@ -147,9 +165,15 @@ def test_the_bounding_box_covers_the_ghosts_too(collection):
 
 def test_a_custom_coarsening_is_declared_verbatim():
     """Whatever the schedule does, the manifest says which of the two operations ran."""
-    schedule = Coarsening(strahler_step=2, epsilon=0.0, simplification=SIMPLIFICATION_NONE)
+    schedule = Coarsening(
+        strahler_step=2, epsilon=0.0, simplification=SIMPLIFICATION_NONE
+    )
     collection = konnektion.build_collection(
-        {1: arbor(depth=7)}, cell_size=(128, 128, 128), levels=2, coarsening=schedule, axes=("x", "y", "z")
+        {1: arbor(depth=7)},
+        cell_size=(128, 128, 128),
+        levels=2,
+        coarsening=schedule,
+        axes=("x", "y", "z"),
     )
     assert collection.encoding.pruning == PRUNING_STRAHLER
     assert collection.encoding.simplification == SIMPLIFICATION_NONE

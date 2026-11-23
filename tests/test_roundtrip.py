@@ -40,7 +40,9 @@ def test_every_cell_carries_a_locator(opened):
 
 def test_the_geometry_decodes_back_to_what_went_in(objects):
     """Every node, matched by (object, id), within half a quantization step."""
-    collection = konnektion.build_collection(objects, cell_size=(128, 128, 128), axes=("x", "y", "z"))
+    collection = konnektion.build_collection(
+        objects, cell_size=(128, 128, 128), axes=("x", "y", "z")
+    )
     store = konnektion.MemoryStore()
     collection.write(store, "p")
     opened = konnektion.open_collection(store, "p")
@@ -56,7 +58,9 @@ def test_the_geometry_decodes_back_to_what_went_in(objects):
                 else cell.node_count
             )
             for index in range(start, stop):
-                seen[(int(object_id), int(cell.node_ids[index]))] = cell.positions[index]
+                seen[(int(object_id), int(cell.node_ids[index]))] = cell.positions[
+                    index
+                ]
 
     total = 0
     worst = 0.0
@@ -72,7 +76,9 @@ def test_the_geometry_decodes_back_to_what_went_in(objects):
 
 def test_the_radii_survive_the_round_trip(objects):
     """Owned nodes and ghosts alike come back with the radius that went in."""
-    collection = konnektion.build_collection(objects, cell_size=(128, 128, 128), axes=("x", "y", "z"))
+    collection = konnektion.build_collection(
+        objects, cell_size=(128, 128, 128), axes=("x", "y", "z")
+    )
     store = konnektion.MemoryStore()
     collection.write(store, "p")
     opened = konnektion.open_collection(store, "p")
@@ -106,7 +112,9 @@ def test_reading_one_cell_by_key_matches_iterating(opened):
 
 def test_a_directory_store_round_trips(tmp_path, objects):
     """The same tree lands on a disk and in an S3 prefix; nothing above the store cares."""
-    collection = konnektion.build_collection(objects, cell_size=(128, 128, 128), axes=("x", "y", "z"))
+    collection = konnektion.build_collection(
+        objects, cell_size=(128, 128, 128), axes=("x", "y", "z")
+    )
     store = konnektion.DirectoryStore(str(tmp_path))
     collection.write(store, "p")
     opened = konnektion.open_collection(store, "p")

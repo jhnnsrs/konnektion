@@ -89,7 +89,8 @@ def from_networkx(
     radii = None
     if radius is not None:
         radii = np.asarray(
-            [_number(graph, key, radius, required=True) for key in keys], dtype=np.float64
+            [_number(graph, key, radius, required=True) for key in keys],
+            dtype=np.float64,
         )
 
     if isinstance(attributes, str):
@@ -97,7 +98,8 @@ def from_networkx(
     columns: dict[str, npt.NDArray[np.float64]] = {}
     for name in attributes:
         values = np.asarray(
-            [_number(graph, key, name, required=False) for key in keys], dtype=np.float64
+            [_number(graph, key, name, required=False) for key in keys],
+            dtype=np.float64,
         )
         if len(values) and np.isnan(values).all():
             raise FormatError(
@@ -109,7 +111,9 @@ def from_networkx(
     root_index = None
     if root is not None:
         if root not in index:
-            raise FormatError(f"`root` is a node of the graph, and {root!r} is not one.")
+            raise FormatError(
+                f"`root` is a node of the graph, and {root!r} is not one."
+            )
         root_index = index[root]
 
     network = coerce_network(
@@ -185,7 +189,11 @@ def _node_ids(keys: Sequence[Any]) -> dict[Any, int]:
 
 def _is_node_id(key: object) -> bool:
     """Whether a key can be a node id as it stands: a non-negative integer, and not a bool."""
-    return isinstance(key, (int, np.integer)) and not isinstance(key, bool) and int(key) >= 0
+    return (
+        isinstance(key, (int, np.integer))
+        and not isinstance(key, bool)
+        and int(key) >= 0
+    )
 
 
 def _number(graph: nx.Graph[Any], key: object, name: str, *, required: bool) -> float:
@@ -213,7 +221,11 @@ def _positions(
     axes: str,
 ) -> npt.NDArray[np.float64]:
     """The ``(n, 3)`` positions in ``(x, y, z)`` order, read as the caller said they are stored."""
-    if len(axes) not in (2, 3) or len(set(axes)) != len(axes) or not set(axes) <= set(_SLOTS):
+    if (
+        len(axes) not in (2, 3)
+        or len(set(axes)) != len(axes)
+        or not set(axes) <= set(_SLOTS)
+    ):
         raise FormatError(
             f"`axes` names the stored components with two or three of 'x', 'y' and 'z', each "
             f"once -- 'zyx' for array order, 'xy' for a planar layout -- got {axes!r}."
@@ -223,7 +235,9 @@ def _positions(
     for row, key in enumerate(keys):
         stored = graph.nodes[key].get(pos) if isinstance(pos, str) else pos.get(key)
         if stored is None:
-            where = f"no {pos!r} attribute" if isinstance(pos, str) else "no entry in `pos`"
+            where = (
+                f"no {pos!r} attribute" if isinstance(pos, str) else "no entry in `pos`"
+            )
             raise FormatError(
                 f"Node {key!r} has {where}. Every node of a network is a position in voxels; "
                 f"pass the attribute that holds it, or a mapping of node to position."
@@ -231,7 +245,9 @@ def _positions(
         try:
             components = np.asarray(stored, dtype=np.float64).reshape(-1)
         except (TypeError, ValueError) as error:
-            raise FormatError(f"Node {key!r} has a position that is not numbers: {error}") from error
+            raise FormatError(
+                f"Node {key!r} has a position that is not numbers: {error}"
+            ) from error
         if len(components) != len(axes):
             raise FormatError(
                 f"Node {key!r} has a position of {len(components)} components and `axes` "

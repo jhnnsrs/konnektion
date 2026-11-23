@@ -32,8 +32,8 @@ dev = [
     "pytest>=8.3.5",
     "pytest-cov>=6.1.1",
     "python-semantic-release>=9.21.0",
-    "ruff>0.11",
-    "basedpyright>=1.21",
+    "ruff==0.17.6",
+    "basedpyright==1.40.2",
     "obstore>=0.10",
     # pyarrow ships no type information of its own, so these stubs are what holds the frames,
     # the reader and the writer to the full strict rule set rather than to `Unknown`.
@@ -47,45 +47,6 @@ include = ["konnektion"]
 
 [tool.hatch.build.targets.wheel]
 include = ["konnektion"]
-
-[tool.basedpyright]
-include = ["konnektion"]
-exclude = ["**/__pycache__", "tests"]
-typeCheckingMode = "strict"
-# These four are off for reasons specific to this package -- konnektion depends only on numpy
-# and pyarrow, both of which ship types, so the usual excuse (an untyped dependency) does not
-# apply. Three things do:
-#
-#   * numpy's `.tolist()` and `.item()` are annotated `Any` by construction, because their
-#     return type depends on the array's rank and dtype. Every graph walk here goes through
-#     `edges.tolist()`, so the loop variables are Unknown no matter what konnektion annotates.
-#   * the ingest surface is deliberately `Any`: `coerce_network` accepts a `Network`, anything
-#     structurally carrying `nodes`/`edges`, a mapping, or a bare pair. Narrowing that to a
-#     union would make the parameter type a lie about what is accepted.
-#   * reading a manifest is reading dynamic JSON, where every `.get()` is legitimately unknown
-#     until it has been validated -- which is exactly what those functions do.
-#
-# Every other strict rule stays on, which is what catches the mistakes that matter here:
-# missing returns, unreachable branches, and arguments that are the wrong type rather than an
-# unknown one.
-reportUnknownMemberType = false
-reportUnknownArgumentType = false
-reportUnknownVariableType = false
-reportUnknownLambdaType = false
-reportMissingTypeStubs = false
-
-[tool.ruff.lint]
-extend-select = ["ANN", "D1", "UP"]
-extend-ignore = ["UP037", "UP038", "UP042"]
-
-[tool.ruff.lint.per-file-ignores]
-# A test's name and docstring say what it asserts; a `-> None` on every one of them is noise
-# that makes the suite harder to read, which is the opposite of what the rule is for.
-"tests/*" = ["ANN001", "ANN201", "ANN202", "ANN206"]
-
-[tool.ruff]
-line-length = 100
-exclude = [".git", ".mypy_cache", ".ruff_cache", ".venv", "__pypackages__", "build", "dist", "venv"]
 
 [tool.pytest.ini_options]
 markers = [

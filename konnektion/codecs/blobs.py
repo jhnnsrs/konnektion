@@ -126,8 +126,14 @@ def encode_positions(
     # A boundary node is pinned to exactly 0.0 or 1.0, so the slack only has to absorb
     # floating-point noise -- a fraction of a quantum, not a quantum.
     tolerance = 0.5 / QUANT_MAX
-    if normalized.size and (normalized.min() < -tolerance or normalized.max() > 1.0 + tolerance):
-        stray = int(((normalized < -tolerance) | (normalized > 1.0 + tolerance)).any(axis=1).sum())
+    if normalized.size and (
+        normalized.min() < -tolerance or normalized.max() > 1.0 + tolerance
+    ):
+        stray = int(
+            ((normalized < -tolerance) | (normalized > 1.0 + tolerance))
+            .any(axis=1)
+            .sum()
+        )
         raise PartitioningError(
             f"{stray} node(s) fall outside cell {cell} at level {level}, whose box is "
             f"{origin.tolist()} + {extent.tolist()} voxels (worst normalized coordinate "
@@ -205,7 +211,9 @@ def decode_edges(
             "uncompressed length is known, since the format's ZSTD framing carries no size of "
             "its own."
         )
-    return implementation.decode_edges(blob, compression=compression, edge_count=edge_count)
+    return implementation.decode_edges(
+        blob, compression=compression, edge_count=edge_count
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -281,7 +289,9 @@ def encode_radii(
     implementation = codec_for(codec)
     values = np.asarray(radii, dtype=np.float64)
     if declaration == RADII_FLOAT32:
-        return implementation.encode_scalars(values.astype("<f4"), compression=compression)
+        return implementation.encode_scalars(
+            values.astype("<f4"), compression=compression
+        )
     if declaration == RADII_UINT16_QUANTIZED_PER_CELL:
         _, extent = cell_box(cell, level, cell_size)
         span = float(np.max(extent))
@@ -295,7 +305,9 @@ def encode_radii(
             )
         quantized = np.rint(np.clip(values, 0.0, span) / span * QUANT_MAX).astype("<u2")
         return implementation.encode_scalars(quantized, compression=compression)
-    raise FormatError(f"`encoding.radii` is {declaration!r}, which this writer does not know.")
+    raise FormatError(
+        f"`encoding.radii` is {declaration!r}, which this writer does not know."
+    )
 
 
 def decode_radii(
@@ -321,7 +333,9 @@ def decode_radii(
             blob, dtype="<u2", compression=compression, count=node_count
         )
         _, extent = cell_box(cell, level, cell_size)
-        return np.asarray(quantized, dtype=np.float64) / QUANT_MAX * float(np.max(extent))
+        return (
+            np.asarray(quantized, dtype=np.float64) / QUANT_MAX * float(np.max(extent))
+        )
     raise FormatError(
         f"`encoding.radii` is {declaration!r}; there is nothing to decode for {RADII_NONE}."
     )
@@ -371,7 +385,9 @@ def decode_attribute_values(
             f"{ATTRIBUTE_FLOAT32}."
         )
     implementation = codec_for(codec)
-    values = implementation.decode_scalars(blob, dtype="<f4", compression=compression, count=count)
+    values = implementation.decode_scalars(
+        blob, dtype="<f4", compression=compression, count=count
+    )
     return np.asarray(values, dtype=np.float64)
 
 
@@ -381,7 +397,10 @@ def decode_attribute_values(
 
 
 def encode_ghost_cells(
-    cells: npt.ArrayLike, *, compression: str = COMPRESSION_NONE, codec: str = CODEC_NONE
+    cells: npt.ArrayLike,
+    *,
+    compression: str = COMPRESSION_NONE,
+    codec: str = CODEC_NONE,
 ) -> bytes:
     """Pack the owning-cell Morton code of each ghost, in the cell's ghost order."""
     implementation = codec_for(codec)
@@ -442,7 +461,9 @@ def encode_ghost_positions(
                 f"cell's box (normalized {normalized.min():.6f} .. {normalized.max():.6f}). The "
                 f"ghost names the wrong owner, which is a partitioning bug."
             )
-        quantized[index] = np.rint(np.clip(normalized, 0.0, 1.0) * QUANT_MAX).astype("<u2")
+        quantized[index] = np.rint(np.clip(normalized, 0.0, 1.0) * QUANT_MAX).astype(
+            "<u2"
+        )
     return implementation.encode_positions(quantized, compression=compression)
 
 

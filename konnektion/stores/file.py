@@ -86,7 +86,9 @@ class StoreFile:
         elif whence == os.SEEK_END:
             target = self.size + offset
         else:
-            raise FormatError(f"`whence` is one of SEEK_SET, SEEK_CUR or SEEK_END, got {whence!r}.")
+            raise FormatError(
+                f"`whence` is one of SEEK_SET, SEEK_CUR or SEEK_END, got {whence!r}."
+            )
         self._position = max(0, min(int(target), self.size))
         return self._position
 
@@ -144,7 +146,12 @@ class StoreFile:
             return served
         if start >= self._tail_start:
             if self._tail is None:
-                self._tail = get_range_bytes(self.store, self.path, self._tail_start, self.size - self._tail_start)
+                self._tail = get_range_bytes(
+                    self.store,
+                    self.path,
+                    self._tail_start,
+                    self.size - self._tail_start,
+                )
             offset = start - self._tail_start
             return self._tail[offset : offset + length]
         return get_range_bytes(self.store, self.path, start, length)
