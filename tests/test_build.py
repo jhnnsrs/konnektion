@@ -20,7 +20,7 @@ from konnektion.sources import Network
 from tests.conftest import arbor, chain
 
 
-def test_small_data_gets_one_level_and_says_it_coarsened_nothing():
+def test_small_data_gets_one_level_and_says_it_coarsened_nothing() -> None:
     """If it does not need downscaling, it is not downscaled -- and the manifest is honest."""
     collection = konnektion.build_collection(
         {1: arbor(depth=4)}, cell_size=(128, 128, 128), axes=("x", "y", "z")
@@ -31,20 +31,24 @@ def test_small_data_gets_one_level_and_says_it_coarsened_nothing():
     assert any("one level" in note for note in collection.notes)
 
 
-def test_one_level_keeps_every_node_exactly(collection, objects):
+def test_one_level_keeps_every_node_exactly(
+    collection: konnektion.NetworkCollection, objects: dict[int, Network]
+) -> None:
     """Level 0 is the input, untouched -- a collection always carries the data it was given."""
     stored = sum(collection.cell_catalog.column("node_count").to_pylist())
     assert stored == sum(network.node_count for network in objects.values())
 
 
-def test_large_data_grows_a_ladder(ladder):
+def test_large_data_grows_a_ladder(ladder: konnektion.NetworkCollection) -> None:
     """Past the overview budget the ladder grows, and says which operations it ran."""
     assert ladder.grid.levels > 1
     assert ladder.encoding.pruning == PRUNING_STRAHLER
     assert ladder.encoding.simplification == SIMPLIFICATION_DOUGLAS_PEUCKER
 
 
-def test_each_level_is_smaller_than_the_one_below(ladder):
+def test_each_level_is_smaller_than_the_one_below(
+    ladder: konnektion.NetworkCollection,
+) -> None:
     """A coarse level that is not smaller costs a fetch and saves nothing."""
     counts = {
         level: sum(table.column("node_count").to_pylist())
@@ -54,7 +58,7 @@ def test_each_level_is_smaller_than_the_one_below(ladder):
         assert counts[level] < counts[level - 1], counts
 
 
-def test_an_explicit_level_count_is_honoured():
+def test_an_explicit_level_count_is_honoured() -> None:
     """Adaptive depth is the default, not a policy imposed on a caller who knows better."""
     collection = konnektion.build_collection(
         {1: arbor(depth=7)}, cell_size=(128, 128, 128), levels=3, axes=("x", "y", "z")
@@ -62,18 +66,22 @@ def test_an_explicit_level_count_is_honoured():
     assert collection.grid.levels == 3
 
 
-def test_an_edge_has_exactly_one_owning_cell(collection, objects):
+def test_an_edge_has_exactly_one_owning_cell(
+    collection: konnektion.NetworkCollection, objects: dict[int, Network]
+) -> None:
     """Not two: a crossing edge stored twice draws a brighter line along every cell plane."""
     stored = sum(collection.cell_catalog.column("edge_count").to_pylist())
     assert stored == sum(network.edge_count for network in objects.values())
 
 
-def test_a_crossing_edge_produces_a_ghost(collection):
+def test_a_crossing_edge_produces_a_ghost(
+    collection: konnektion.NetworkCollection,
+) -> None:
     """An object spanning cells has to reach across, and reaching across is what a ghost is."""
     assert sum(collection.cell_catalog.column("ghost_count").to_pylist()) > 0
 
 
-def test_a_graph_inside_one_cell_needs_no_ghosts():
+def test_a_graph_inside_one_cell_needs_no_ghosts() -> None:
     """The degenerate case is genuinely free -- no crossings, so no copies."""
     collection = konnektion.build_collection(
         {1: chain(5)}, cell_size=(1024, 1024, 1024), axes=("x", "y", "z")
@@ -81,12 +89,14 @@ def test_a_graph_inside_one_cell_needs_no_ghosts():
     assert sum(collection.cell_catalog.column("ghost_count").to_pylist()) == 0
 
 
-def test_radii_are_carried_when_the_objects_have_them(collection):
+def test_radii_are_carried_when_the_objects_have_them(
+    collection: konnektion.NetworkCollection,
+) -> None:
     """A radius is a measurement, so it is stored when there is one."""
     assert collection.encoding.radii == RADII_FLOAT32
 
 
-def test_radii_are_absent_when_the_objects_have_none():
+def test_radii_are_absent_when_the_objects_have_none() -> None:
     """A column that would hold nothing is not declared at all."""
     collection = konnektion.build_collection(
         {1: chain(5)}, cell_size=(256, 256, 256), axes=("x", "y", "z")
@@ -94,7 +104,7 @@ def test_radii_are_absent_when_the_objects_have_none():
     assert collection.encoding.radii == RADII_NONE
 
 
-def test_declaring_radii_that_do_not_exist_is_refused():
+def test_declaring_radii_that_do_not_exist_is_refused() -> None:
     """A declared column holding zeros is a place for a reader to find data that is not there."""
     with pytest.raises(FormatError, match="no object carries one"):
         konnektion.build_collection(
@@ -105,7 +115,7 @@ def test_declaring_radii_that_do_not_exist_is_refused():
         )
 
 
-def test_a_negative_coordinate_is_refused():
+def test_a_negative_coordinate_is_refused() -> None:
     """The octree addresses the positive octant; shifting is the caller's to do knowingly."""
     network = Network(
         nodes=np.array([[-1.0, 0, 0], [1.0, 0, 0]]), edges=np.array([[0, 1]])
@@ -116,13 +126,15 @@ def test_a_negative_coordinate_is_refused():
         )
 
 
-def test_the_object_catalog_declares_the_component_count(collection):
+def test_the_object_catalog_declares_the_component_count(
+    collection: konnektion.NetworkCollection,
+) -> None:
     """Declared so connectivity is checkable at every level, one-level collections included."""
     counts = collection.object_catalog.column("component_count").to_pylist()
     assert counts == [1, 1], "both fixtures are single connected arbors"
 
 
-def test_a_disconnected_object_declares_its_pieces():
+def test_a_disconnected_object_declares_its_pieces() -> None:
     """A disconnected input is legitimate; the format records the number rather than refusing."""
     nodes = np.array([[10.0, 10, 10], [11, 10, 10], [50, 50, 50], [51, 50, 50]])
     edges = np.array([[0, 1], [2, 3]])
@@ -134,7 +146,9 @@ def test_a_disconnected_object_declares_its_pieces():
     assert collection.object_catalog.column("component_count").to_pylist() == [2]
 
 
-def test_cell_size_is_taken_when_given_and_chosen_when_not(objects):
+def test_cell_size_is_taken_when_given_and_chosen_when_not(
+    objects: dict[int, Network],
+) -> None:
     """The chunk shape is worth matching, and nothing about the nodes can reveal it."""
     given = konnektion.build_collection(
         objects, cell_size=(128, 128, 128), axes=("x", "y", "z")
@@ -144,7 +158,9 @@ def test_cell_size_is_taken_when_given_and_chosen_when_not(objects):
     assert all(size >= 16 for size in chosen.grid.cell_size)
 
 
-def test_the_bounding_box_covers_the_ghosts_too(collection):
+def test_the_bounding_box_covers_the_ghosts_too(
+    collection: konnektion.NetworkCollection,
+) -> None:
     """A viewer culls against it, and this cell draws edges reaching into its neighbours."""
     import konnektion as k
 
@@ -163,7 +179,7 @@ def test_the_bounding_box_covers_the_ghosts_too(collection):
     pytest.skip("no cell in this fixture holds a ghost")
 
 
-def test_a_custom_coarsening_is_declared_verbatim():
+def test_a_custom_coarsening_is_declared_verbatim() -> None:
     """Whatever the schedule does, the manifest says which of the two operations ran."""
     schedule = Coarsening(
         strahler_step=2, epsilon=0.0, simplification=SIMPLIFICATION_NONE
@@ -179,7 +195,7 @@ def test_a_custom_coarsening_is_declared_verbatim():
     assert collection.encoding.simplification == SIMPLIFICATION_NONE
 
 
-def test_a_collection_is_never_built_without_naming_its_slots():
+def test_a_collection_is_never_built_without_naming_its_slots() -> None:
     """No default order: a viewer handed none would have to guess, and a wrong guess only transposes."""
     with pytest.raises(TypeError):
         konnektion.build_collection({1: chain(5)}, cell_size=(256, 256, 256))  # type: ignore[call-arg]

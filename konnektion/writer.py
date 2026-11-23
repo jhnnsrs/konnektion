@@ -57,7 +57,7 @@ def _keys(table: pa.Table) -> list[tuple[int, int]]:
     levels = table.column("level").to_pylist()
     cells = table.column("cell").to_pylist()
     keys: list[tuple[int, int]] = []
-    for row, (level, cell) in enumerate(zip(levels, cells)):
+    for row, (level, cell) in enumerate(zip(levels, cells, strict=True)):
         if level is None or cell is None:
             raise FormatError(
                 f"Row {row} of this frame holds null in `level` or `cell`. Both are non-null in "

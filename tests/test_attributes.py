@@ -7,12 +7,16 @@ owner's value, and that the manifest's declarations are exactly what the geometr
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import numpy as np
+import pyarrow as pa
 import pytest
 
 import konnektion
 from konnektion.frames import attribute_column, parquet_to_table
 from konnektion.manifest import Attribute, Manifest
+from konnektion.reader import DecodedCell
 from konnektion.sources import Network
 from konnektion.verify import _members
 
@@ -21,7 +25,7 @@ from .conftest import arbor, chain
 INTRINSIC_NAMES = [name for name, _ in konnektion.INTRINSIC_ATTRIBUTES]
 
 
-def value_map(cells, name: str) -> dict[tuple[int, int], float]:
+def value_map(cells: Iterable[DecodedCell], name: str) -> dict[tuple[int, int], float]:
     """``(object_id, node_id)`` -> attribute value, owned nodes only."""
     found: dict[tuple[int, int], float] = {}
     for cell in cells:
@@ -36,7 +40,9 @@ def value_map(cells, name: str) -> dict[tuple[int, int], float]:
 # --------------------------------------------------------------------------- #
 
 
-def test_every_build_declares_the_intrinsics(collection: konnektion.NetworkCollection):
+def test_every_build_declares_the_intrinsics(
+    collection: konnektion.NetworkCollection,
+) -> None:
     """The four computed metrics are declared, in order, wearing their semantics."""
     declared = collection.manifest().attributes
     assert [attribute.name for attribute in declared] == INTRINSIC_NAMES
@@ -44,7 +50,7 @@ def test_every_build_declares_the_intrinsics(collection: konnektion.NetworkColle
     assert all(attribute.encoding == "FLOAT32" for attribute in declared)
 
 
-def test_intrinsic_values_on_a_known_tree():
+def test_intrinsic_values_on_a_known_tree() -> None:
     """A Y-shaped tree whose metrics can be checked by hand."""
     #   2   3
     #    \ /
@@ -73,7 +79,7 @@ def test_intrinsic_values_on_a_known_tree():
     assert by_id["component"] == {0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0}
 
 
-def test_rootless_strahler_and_depth_are_nan():
+def test_rootless_strahler_and_depth_are_nan() -> None:
     """An object with no distinguished root has no 'up', and the format says so with NaN."""
     built = konnektion.build_collection(
         {1: chain(5)}, cell_size=(64, 64, 64), axes=("x", "y", "z")
@@ -93,7 +99,7 @@ def test_rootless_strahler_and_depth_are_nan():
 # --------------------------------------------------------------------------- #
 
 
-def test_user_attributes_round_trip():
+def test_user_attributes_round_trip() -> None:
     """A caller's per-node column comes back at every node, declared with null semantics."""
     tree = arbor(depth=3)
     tortuosity = np.linspace(0.0, 2.0, tree.node_count)
@@ -122,7 +128,7 @@ def test_user_attributes_round_trip():
         assert value == pytest.approx(expected[node_id], rel=1e-6)
 
 
-def test_a_missing_user_attribute_is_nan_filled():
+def test_a_missing_user_attribute_is_nan_filled() -> None:
     """An attribute one object lacks is NaN there, not refused: partial measurement is normal."""
     with_it = arbor(depth=3)
     without_it = arbor(depth=3, origin=(700.0, 500.0, 400.0), seed=9)
@@ -147,7 +153,7 @@ def test_a_missing_user_attribute_is_nan_filled():
     assert all(np.isnan(value) for (obj, _), value in found.items() if obj == 2)
 
 
-def test_an_intrinsic_name_collision_is_refused():
+def test_an_intrinsic_name_collision_is_refused() -> None:
     """A caller column named like a computed metric would forge the manifest's semantics."""
     tree = chain(4)
     network = Network(
@@ -170,7 +176,9 @@ def test_an_intrinsic_name_collision_is_refused():
         ({"hot": np.array([1.0, np.inf, 0.0, 0.0])}, "infinity"),
     ],
 )
-def test_malformed_attributes_are_refused(attributes, match):
+def test_malformed_attributes_are_refused(
+    attributes: dict[str, np.ndarray], match: str
+) -> None:
     """Each refusal names the attribute and the rule it broke."""
     tree = chain(4)
     with pytest.raises(konnektion.FormatError, match=match):
@@ -184,7 +192,9 @@ def test_malformed_attributes_are_refused(attributes, match):
 # --------------------------------------------------------------------------- #
 
 
-def test_manifest_attributes_round_trip(collection: konnektion.NetworkCollection):
+def test_manifest_attributes_round_trip(
+    collection: konnektion.NetworkCollection,
+) -> None:
     """Declarations survive to_dict/from_dict, and the key is written even when empty."""
     manifest = collection.manifest()
     raw = manifest.to_dict()
@@ -197,14 +207,18 @@ def test_manifest_attributes_round_trip(collection: konnektion.NetworkCollection
     assert Manifest.from_dict(bare).attributes == ()
 
 
-def test_a_manifest_without_the_attributes_key_still_reads(collection):
+def test_a_manifest_without_the_attributes_key_still_reads(
+    collection: konnektion.NetworkCollection,
+) -> None:
     """A spec-1 manifest written before attributes existed parses to none, not an error."""
     raw = collection.manifest().to_dict()
     del raw["attributes"]
     assert Manifest.from_dict(raw).attributes == ()
 
 
-def test_a_duplicate_declaration_is_refused(collection):
+def test_a_duplicate_declaration_is_refused(
+    collection: konnektion.NetworkCollection,
+) -> None:
     """One name, one column: a repeated declaration is two claims about the same bytes."""
     raw = collection.manifest().to_dict()
     raw["attributes"] = raw["attributes"] + [raw["attributes"][0]]
@@ -220,7 +234,9 @@ def test_a_duplicate_declaration_is_refused(collection):
         ({"name": "radius"}, "radii"),
     ],
 )
-def test_a_declaration_outside_the_vocabulary_is_refused(entry, match):
+def test_a_declaration_outside_the_vocabulary_is_refused(
+    entry: dict[str, str], match: str
+) -> None:
     """The vocabulary refusals, at the dataclass gate."""
     with pytest.raises(konnektion.FormatError, match=match):
         Attribute.from_any(entry)
@@ -231,7 +247,7 @@ def test_a_declaration_outside_the_vocabulary_is_refused(entry, match):
 # --------------------------------------------------------------------------- #
 
 
-def test_ghost_values_are_the_owners_values(opened: konnektion.Collection):
+def test_ghost_values_are_the_owners_values(opened: konnektion.Collection) -> None:
     """A ghost carries the same attribute values as the node it copies."""
     cells = list(opened.iter_cells(0))
     compared = 0
@@ -251,7 +267,9 @@ def test_ghost_values_are_the_owners_values(opened: konnektion.Collection):
     assert compared, "the fixture grew no ghosts, so this test checked nothing"
 
 
-def test_coarse_levels_carry_level_zero_values(opened_ladder: konnektion.Collection):
+def test_coarse_levels_carry_level_zero_values(
+    opened_ladder: konnektion.Collection,
+) -> None:
     """A node kept at a coarse level keeps its level-0 value: subset, never recomputed."""
     assert opened_ladder.grid.levels > 1, (
         "the ladder fixture must be deep enough to test this"
@@ -273,7 +291,7 @@ def test_coarse_levels_carry_level_zero_values(opened_ladder: konnektion.Collect
 # --------------------------------------------------------------------------- #
 
 
-def test_verify_passes_a_clean_collection(opened_ladder: konnektion.Collection):
+def test_verify_passes_a_clean_collection(opened_ladder: konnektion.Collection) -> None:
     """The attribute checks run -- not skipped -- and pass on an honest build."""
     report = konnektion.verify(opened_ladder, tier="topology")
     assert report.ok, str(report)
@@ -283,7 +301,9 @@ def test_verify_passes_a_clean_collection(opened_ladder: konnektion.Collection):
     assert "a kept node's attribute values are the level-0 values" in names
 
 
-def test_an_undeclared_attribute_column_is_caught(written: konnektion.MemoryStore):
+def test_an_undeclared_attribute_column_is_caught(
+    written: konnektion.MemoryStore,
+) -> None:
     """Values no reader will ever look for: the manifest names what exists."""
     import pyarrow as pa
 
@@ -302,7 +322,7 @@ def test_an_undeclared_attribute_column_is_caught(written: konnektion.MemoryStor
     )
 
 
-def test_a_recomputed_metric_is_caught(opened_ladder: konnektion.Collection):
+def test_a_recomputed_metric_is_caught(opened_ladder: konnektion.Collection) -> None:
     """A coarse level whose values differ from level 0 fails the coarsening check."""
     import pyarrow as pa
 
@@ -329,7 +349,7 @@ def test_a_recomputed_metric_is_caught(opened_ladder: konnektion.Collection):
     )
 
 
-def _reserialize(table) -> bytes:
+def _reserialize(table: pa.Table) -> bytes:
     """Parquet bytes for a tampered table, compression matching the writer's."""
     from konnektion.frames import table_to_parquet
 

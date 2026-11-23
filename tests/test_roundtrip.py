@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 import konnektion
 from konnektion.manifest import CELL_CATALOG_PATH, MANIFEST_NAME, OBJECT_CATALOG_PATH
 from konnektion.octree import cell_box, morton_decode, morton_encode, morton_encode_one
+from konnektion.sources import Network
 
 
-def test_the_layout_is_the_one_the_format_fixes(written):
+def test_the_layout_is_the_one_the_format_fixes(
+    written: konnektion.MemoryStore,
+) -> None:
     """A reader who knows one konnektion prefix knows them all."""
     assert set(written.objects) == {
         f"p/{MANIFEST_NAME}",
@@ -20,7 +25,9 @@ def test_the_layout_is_the_one_the_format_fixes(written):
     }
 
 
-def test_the_manifest_names_every_file_with_its_length(opened):
+def test_the_manifest_names_every_file_with_its_length(
+    opened: konnektion.Collection,
+) -> None:
     """A reader that can neither list nor stat still has to find and range-read the parts."""
     files = opened.manifest.files
     assert files["cells"]["bytes"] > 0
@@ -31,14 +38,14 @@ def test_the_manifest_names_every_file_with_its_length(opened):
             assert entry["rowGroups"] >= 1
 
 
-def test_every_cell_carries_a_locator(opened):
+def test_every_cell_carries_a_locator(opened: konnektion.Collection) -> None:
     """A catalog row without one names a cell no reader could fetch."""
     for entry in opened.cells.values():
         assert entry.part is not None
         assert entry.row_group is not None
 
 
-def test_the_geometry_decodes_back_to_what_went_in(objects):
+def test_the_geometry_decodes_back_to_what_went_in(objects: dict[int, Network]) -> None:
     """Every node, matched by (object, id), within half a quantization step."""
     collection = konnektion.build_collection(
         objects, cell_size=(128, 128, 128), axes=("x", "y", "z")
@@ -74,7 +81,7 @@ def test_the_geometry_decodes_back_to_what_went_in(objects):
     assert worst <= np.sqrt(3) * step / 2 + 1e-9, worst
 
 
-def test_the_radii_survive_the_round_trip(objects):
+def test_the_radii_survive_the_round_trip(objects: dict[int, Network]) -> None:
     """Owned nodes and ghosts alike come back with the radius that went in."""
     collection = konnektion.build_collection(
         objects, cell_size=(128, 128, 128), axes=("x", "y", "z")
@@ -89,7 +96,7 @@ def test_the_radii_survive_the_round_trip(objects):
         return
 
 
-def test_a_ghost_is_the_tail_of_the_node_array(opened):
+def test_a_ghost_is_the_tail_of_the_node_array(opened: konnektion.Collection) -> None:
     """No mask is stored, because the layout already says which nodes are copies."""
     for cell in opened.iter_cells(0):
         if not cell.ghost_count:
@@ -101,7 +108,9 @@ def test_a_ghost_is_the_tail_of_the_node_array(opened):
     pytest.skip("no cell in this fixture holds a ghost")
 
 
-def test_reading_one_cell_by_key_matches_iterating(opened):
+def test_reading_one_cell_by_key_matches_iterating(
+    opened: konnektion.Collection,
+) -> None:
     """Two ways to the same bytes must not disagree."""
     key = min(opened.cells)
     direct = opened.read_cell(*key)
@@ -110,7 +119,9 @@ def test_reading_one_cell_by_key_matches_iterating(opened):
     assert np.array_equal(direct.edges, matching.edges)
 
 
-def test_a_directory_store_round_trips(tmp_path, objects):
+def test_a_directory_store_round_trips(
+    tmp_path: Path, objects: dict[int, Network]
+) -> None:
     """The same tree lands on a disk and in an S3 prefix; nothing above the store cares."""
     collection = konnektion.build_collection(
         objects, cell_size=(128, 128, 128), axes=("x", "y", "z")
@@ -126,33 +137,35 @@ def test_a_directory_store_round_trips(tmp_path, objects):
 # --------------------------------------------------------------------------- #
 
 
-def test_morton_round_trips():
+def test_morton_round_trips() -> None:
     """The interleave is the sort key, so it has to be exactly invertible."""
     triples = [(0, 0, 0), (1, 2, 3), (17, 4, 9), (131071, 0, 0)]
     codes = morton_encode(np.array(triples))
     assert [morton_decode(int(code)) for code in codes] == triples
 
 
-def test_a_cell_box_is_invertible_from_the_row_alone():
+def test_a_cell_box_is_invertible_from_the_row_alone() -> None:
     """Level and cell and the manifest's cell_size are all a decoder gets, and all it needs."""
     origin, extent = cell_box(morton_encode_one((2, 1, 3)), 1, (64, 64, 32))
     assert origin.tolist() == [2 * 128, 1 * 128, 3 * 64]
     assert extent.tolist() == [128, 128, 64]
 
 
-def test_a_cell_index_past_the_morton_limit_is_refused():
+def test_a_cell_index_past_the_morton_limit_is_refused() -> None:
     """Three axes at 17 bits interleave to 51, which is what keeps a code under 2**53."""
     with pytest.raises(ValueError, match="17-bit"):
         morton_encode(np.array([[1 << 17, 0, 0]]))
 
 
-def test_a_negative_cell_index_is_refused():
+def test_a_negative_cell_index_is_refused() -> None:
     """The octree addresses the positive octant only."""
     with pytest.raises(ValueError, match="non-negative"):
         morton_encode(np.array([[-1, 0, 0]]))
 
 
-def test_the_parquet_codec_is_the_callers_and_reaches_every_file(collection):
+def test_the_parquet_codec_is_the_callers_and_reaches_every_file(
+    collection: konnektion.NetworkCollection,
+) -> None:
     """A reader that lacks a decoder would draw nothing, so the codec is stated, not inherited."""
     import io
 

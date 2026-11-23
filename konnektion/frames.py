@@ -302,7 +302,7 @@ def blob_sizes(table: pa.Table) -> list[int]:
         name for name in names if name.startswith(("attr_", "ghost_attr_"))
     )
     parts = [table.column(name).to_pylist() for name in columns]
-    return [sum(len(blob or b"") for blob in row) for row in zip(*parts)]
+    return [sum(len(blob or b"") for blob in row) for row in zip(*parts, strict=True)]
 
 
 def plan_byte_chunks(sizes: Sequence[int], budget: int) -> list[tuple[int, int]]:

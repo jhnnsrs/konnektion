@@ -7,6 +7,9 @@ check that quietly stopped looking at anything would show up here as a test that
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -14,6 +17,9 @@ import konnektion
 from konnektion.frames import parquet_to_table, table_to_parquet
 from konnektion.manifest import CELL_CATALOG_PATH, MANIFEST_NAME
 from konnektion.stores import get_bytes, join, put_bytes
+
+#: A parquet part's columns as Python lists (pyarrow's to_pylist is untyped).
+Columns = dict[str, list[Any]]
 
 
 def names(report: konnektion.VerifyReport) -> set[str]:
@@ -26,20 +32,24 @@ def names(report: konnektion.VerifyReport) -> set[str]:
 # --------------------------------------------------------------------------- #
 
 
-def test_a_written_collection_verifies(opened):
+def test_a_written_collection_verifies(opened: konnektion.Collection) -> None:
     """The baseline every negative test below is measured against."""
     report = konnektion.verify(opened, tier="topology")
     assert report.ok, str(report)
 
 
-def test_a_ladder_verifies_including_the_cross_level_checks(opened_ladder):
+def test_a_ladder_verifies_including_the_cross_level_checks(
+    opened_ladder: konnektion.Collection,
+) -> None:
     """The multi-level path, where the coarsening claims are real."""
     report = konnektion.verify(opened_ladder, tier="topology")
     assert report.ok, str(report)
     assert opened_ladder.grid.levels > 1, "the fixture must actually build a ladder"
 
 
-def test_the_cross_level_checks_are_not_vacuous(opened_ladder):
+def test_the_cross_level_checks_are_not_vacuous(
+    opened_ladder: konnektion.Collection,
+) -> None:
     """They have to compare a real number of things, or they prove nothing."""
     report = konnektion.verify(opened_ladder, tier="topology")
     subset = next(
@@ -52,7 +62,9 @@ def test_the_cross_level_checks_are_not_vacuous(opened_ladder):
     assert int(ghosts.detail.split()[0]) > 100, ghosts.detail
 
 
-def test_one_level_skips_the_cross_level_checks_rather_than_passing_them(opened):
+def test_one_level_skips_the_cross_level_checks_rather_than_passing_them(
+    opened: konnektion.Collection,
+) -> None:
     """A pass for want of anything to check reads exactly like a real pass. It must not."""
     report = konnektion.verify(opened, tier="topology")
     assert opened.grid.levels == 1
@@ -60,7 +72,7 @@ def test_one_level_skips_the_cross_level_checks_rather_than_passing_them(opened)
     assert not any("subset of the finer" in check.name for check in report.checks)
 
 
-def test_a_lower_tier_says_what_it_did_not_do(opened):
+def test_a_lower_tier_says_what_it_did_not_do(opened: konnektion.Collection) -> None:
     """A cheap run must not read like a thorough one."""
     report = konnektion.verify(opened, tier="structure")
     assert report.ok
@@ -68,7 +80,7 @@ def test_a_lower_tier_says_what_it_did_not_do(opened):
     assert any("topology" in note for note in report.skipped)
 
 
-def test_an_unknown_tier_is_refused(opened):
+def test_an_unknown_tier_is_refused(opened: konnektion.Collection) -> None:
     """Naming what exists beats silently checking less than was asked."""
     with pytest.raises(ValueError, match="tier"):
         konnektion.verify(opened, tier="everything")
@@ -79,7 +91,7 @@ def test_an_unknown_tier_is_refused(opened):
 # --------------------------------------------------------------------------- #
 
 
-def test_a_missing_part_is_caught(written):
+def test_a_missing_part_is_caught(written: konnektion.MemoryStore) -> None:
     """Delete a level's geometry; the manifest still names it."""
     del written.objects["p/level0/part-00000.parquet"]
     report = konnektion.verify(
@@ -88,14 +100,16 @@ def test_a_missing_part_is_caught(written):
     assert "every file the manifest names is present" in names(report)
 
 
-def test_a_prefix_without_a_manifest_is_an_unfinished_write(written):
+def test_a_prefix_without_a_manifest_is_an_unfinished_write(
+    written: konnektion.MemoryStore,
+) -> None:
     """The manifest is written last, so its absence is a specific, expected state."""
     del written.objects[f"p/{MANIFEST_NAME}"]
     with pytest.raises(konnektion.UnfinishedCollectionError):
         konnektion.open_collection(written, "p")
 
 
-def test_a_cell_without_a_locator_is_caught(written):
+def test_a_cell_without_a_locator_is_caught(written: konnektion.MemoryStore) -> None:
     """Blank the part column: the catalog then names a cell no reader could fetch."""
     table = parquet_to_table(get_bytes(written, join("p", CELL_CATALOG_PATH)))
     import pyarrow as pa
@@ -112,7 +126,7 @@ def test_a_cell_without_a_locator_is_caught(written):
     assert "every cell names the part and row group holding it" in names(report)
 
 
-def test_a_moved_ghost_is_caught(written):
+def test_a_moved_ghost_is_caught(written: konnektion.MemoryStore) -> None:
     """Re-encode one ghost against the wrong cell -- the failure that is otherwise invisible.
 
     A ghost quantized against the wrong box decodes to a plausible position, and the only
@@ -127,7 +141,9 @@ def test_a_moved_ghost_is_caught(written):
     )
 
 
-def test_a_severed_edge_breaks_connectivity_and_is_caught(written):
+def test_a_severed_edge_breaks_connectivity_and_is_caught(
+    written: konnektion.MemoryStore,
+) -> None:
     """Sever one cell's edges: the object it held falls into pieces.
 
     The headline failure. Every piece still draws, and every piece looks like data -- which is
@@ -142,14 +158,16 @@ def test_a_severed_edge_breaks_connectivity_and_is_caught(written):
     }, str(report)
 
 
-def test_an_out_of_range_edge_is_caught(written):
+def test_an_out_of_range_edge_is_caught(written: konnektion.MemoryStore) -> None:
     """An edge naming a node the cell does not hold."""
     _corrupt_edges_out_of_range(written)
     report = konnektion.verify(konnektion.open_collection(written, "p"), tier="blobs")
     assert "every edge indexes a node the cell holds" in names(report), str(report)
 
 
-def test_a_count_that_disagrees_with_its_blob_is_caught(written):
+def test_a_count_that_disagrees_with_its_blob_is_caught(
+    written: konnektion.MemoryStore,
+) -> None:
     """The row and the geometry then belong to different writes."""
     import pyarrow as pa
 
@@ -177,7 +195,9 @@ def test_a_count_that_disagrees_with_its_blob_is_caught(written):
 # --------------------------------------------------------------------------- #
 
 
-def _rewrite_geometry(store, mutate) -> None:  # type: ignore[no-untyped-def]
+def _rewrite_geometry(
+    store: konnektion.MemoryStore, mutate: Callable[[Columns], None]
+) -> None:
     """Read the level-0 part, let ``mutate`` change its columns, write it back."""
     import pyarrow as pa
 
@@ -188,10 +208,10 @@ def _rewrite_geometry(store, mutate) -> None:  # type: ignore[no-untyped-def]
     store.objects[path] = table_to_parquet(pa.table(columns, schema=table.schema))
 
 
-def _corrupt_ghost_positions(store) -> None:  # type: ignore[no-untyped-def]
+def _corrupt_ghost_positions(store: konnektion.MemoryStore) -> None:
     """Shift every ghost blob by one quantum in x, as a wrong-box encoding would."""
 
-    def mutate(columns):  # type: ignore[no-untyped-def]
+    def mutate(columns: Columns) -> None:
         for row, blob in enumerate(columns["ghost_positions"]):
             if not blob:
                 continue
@@ -203,10 +223,10 @@ def _corrupt_ghost_positions(store) -> None:  # type: ignore[no-untyped-def]
     _rewrite_geometry(store, mutate)
 
 
-def _corrupt_edges_out_of_range(store) -> None:  # type: ignore[no-untyped-def]
+def _corrupt_edges_out_of_range(store: konnektion.MemoryStore) -> None:
     """Point one edge endpoint past the end of its cell's node array."""
 
-    def mutate(columns):  # type: ignore[no-untyped-def]
+    def mutate(columns: Columns) -> None:
         for row, blob in enumerate(columns["edges"]):
             if not blob:
                 continue
@@ -218,7 +238,7 @@ def _corrupt_edges_out_of_range(store) -> None:  # type: ignore[no-untyped-def]
     _rewrite_geometry(store, mutate)
 
 
-def _sever_the_busiest_cell(store) -> None:  # type: ignore[no-untyped-def]
+def _sever_the_busiest_cell(store: konnektion.MemoryStore) -> None:
     """Replace every edge of the busiest cell with a copy of its first one.
 
     Deliberately count-preserving. The obvious corruption -- emptying the edge blob -- is caught
@@ -228,7 +248,7 @@ def _sever_the_busiest_cell(store) -> None:  # type: ignore[no-untyped-def]
     notice is the connectivity check.
     """
 
-    def mutate(columns):  # type: ignore[no-untyped-def]
+    def mutate(columns: Columns) -> None:
         target = int(np.argmax(columns["edge_count"]))
         values = (
             np.frombuffer(columns["edges"][target], dtype="<u4").copy().reshape(-1, 2)

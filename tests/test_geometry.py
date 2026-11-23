@@ -29,12 +29,12 @@ def perfect_tree() -> Network:
     return Network(nodes=nodes, edges=edges, root=0)
 
 
-def test_strahler_matches_the_hand_computed_orders():
+def test_strahler_matches_the_hand_computed_orders() -> None:
     """A leaf is 1; a node whose two children tie takes their order plus one."""
     assert g.strahler_orders(perfect_tree()).tolist() == [3, 2, 2, 1, 1, 1, 1]
 
 
-def test_strahler_rises_only_where_equal_branches_meet():
+def test_strahler_rises_only_where_equal_branches_meet() -> None:
     """One child of order 2 and one of order 1 leaves the parent at 2, not 3."""
     nodes = np.array(
         [[0, 0, 0], [1, 0, 0], [2, 1, 0], [2, -1, 0], [1, 5, 0]], dtype=float
@@ -47,7 +47,7 @@ def test_strahler_rises_only_where_equal_branches_meet():
     )
 
 
-def test_strahler_is_non_decreasing_toward_the_root():
+def test_strahler_is_non_decreasing_toward_the_root() -> None:
     """The property that makes threshold pruning ancestor-closed for free.
 
     Checked on a real arbor rather than the toy tree: this is the load-bearing claim, and it is
@@ -65,7 +65,7 @@ def test_strahler_is_non_decreasing_toward_the_root():
     assert checked > 100, "the property must be exercised, not merely not-contradicted"
 
 
-def test_pruning_is_ancestor_closed():
+def test_pruning_is_ancestor_closed() -> None:
     """Every surviving node's whole path to the root survives with it."""
     network = arbor()
     _, kept = g.prune_to_order(network, 3)
@@ -83,19 +83,19 @@ def test_pruning_is_ancestor_closed():
     assert walked > 100, "the walk has to actually traverse something"
 
 
-def test_pruning_backs_off_rather_than_deleting_an_object():
+def test_pruning_backs_off_rather_than_deleting_an_object() -> None:
     """A threshold past the tree's own height keeps it rather than emptying it."""
     pruned, _ = g.prune_to_order(perfect_tree(), 99, floor_nodes=2)
     assert pruned.node_count >= 2
 
 
-def test_pruning_keeps_a_connected_graph():
+def test_pruning_keeps_a_connected_graph() -> None:
     """Removing whole branches must not strand what is left."""
     pruned, _ = g.prune_to_order(arbor(), 3)
     assert _components(pruned) == 1
 
 
-def test_douglas_peucker_keeps_the_endpoints_and_the_bend():
+def test_douglas_peucker_keeps_the_endpoints_and_the_bend() -> None:
     """A straight run collapses to its ends; a kink survives at a tight epsilon."""
     straight = np.zeros((11, 3))
     straight[:, 0] = np.arange(11)
@@ -108,13 +108,13 @@ def test_douglas_peucker_keeps_the_endpoints_and_the_bend():
     assert 5 in kept, "the bend is the whole reason this run cannot be one segment"
 
 
-def test_douglas_peucker_at_zero_epsilon_keeps_everything():
+def test_douglas_peucker_at_zero_epsilon_keeps_everything() -> None:
     """Epsilon 0 is 'do not simplify', not 'simplify maximally'."""
     points = np.random.default_rng(0).normal(size=(20, 3))
     assert g.douglas_peucker(points, 0.0).all()
 
 
-def test_simplify_relinks_survivors_instead_of_inheriting_edges():
+def test_simplify_relinks_survivors_instead_of_inheriting_edges() -> None:
     """The bug this catches: an induced subgraph loses every edge along a straightened run.
 
     ``A-x-y-B`` becomes ``A-B``, and every original edge on that run has a dropped endpoint --
@@ -126,7 +126,7 @@ def test_simplify_relinks_survivors_instead_of_inheriting_edges():
     assert simplified.edge_count == 1, "and they must still be joined"
 
 
-def test_simplify_preserves_connectivity_and_topology():
+def test_simplify_preserves_connectivity_and_topology() -> None:
     """A straightened arbor is still one connected tree with the same branch points."""
     network = arbor()
     before = g.degrees(network)
@@ -139,14 +139,14 @@ def test_simplify_preserves_connectivity_and_topology():
     )
 
 
-def test_simplify_never_moves_a_node():
+def test_simplify_never_moves_a_node() -> None:
     """Every surviving node is at exactly the coordinate it came in at."""
     network = arbor()
     simplified, kept = g.simplify(network, 1.0)
     assert np.array_equal(simplified.nodes, network.nodes[kept])
 
 
-def test_deviation_is_bounded_by_the_epsilon_that_produced_it():
+def test_deviation_is_bounded_by_the_epsilon_that_produced_it() -> None:
     """Douglas-Peucker's own metric is what `lod_error` is spent as, so they must agree."""
     network = arbor()
     for epsilon in (0.25, 1.0, 4.0):
@@ -154,7 +154,7 @@ def test_deviation_is_bounded_by_the_epsilon_that_produced_it():
         assert g.polyline_deviation(network, simplified, kept) <= epsilon + 1e-9
 
 
-def test_unbranched_runs_cover_every_edge_exactly_once():
+def test_unbranched_runs_cover_every_edge_exactly_once() -> None:
     """The run decomposition is what simplification rebuilds edges from, so it must be total."""
     network = arbor()
     seen: list[tuple[int, int]] = []
@@ -165,7 +165,7 @@ def test_unbranched_runs_cover_every_edge_exactly_once():
     assert len(seen) == len(original), "an edge covered twice would be simplified twice"
 
 
-def test_a_pure_loop_is_still_found():
+def test_a_pure_loop_is_still_found() -> None:
     """A cycle of degree-2 nodes has no endpoint to walk from, and must not be dropped."""
     count = 8
     angle = np.linspace(0, 2 * np.pi, count, endpoint=False)
